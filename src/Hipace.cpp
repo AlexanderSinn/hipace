@@ -615,6 +615,8 @@ Hipace::ExplicitSolveBxBy (const int lev)
     amrex::MultiFab& nslicemf = m_fields.getSlices(lev, nsl);
     const int psl = WhichSlice::Previous1;
     amrex::MultiFab& pslicemf = m_fields.getSlices(lev, psl);
+    const int psl2 = WhichSlice::Previous2;
+    amrex::MultiFab& pslicemf2 = m_fields.getSlices(lev, psl2);
     const amrex::BoxArray ba = slicemf.boxArray();
     const amrex::DistributionMapping dm = slicemf.DistributionMap();
     const amrex::IntVect ngv = slicemf.nGrowVect();
@@ -643,6 +645,8 @@ Hipace::ExplicitSolveBxBy (const int lev)
     const amrex::MultiFab prev_Jyb(pslicemf, amrex::make_alias, Comps[psl]["jy_beam"], 1);
     const amrex::MultiFab next_Jyb(nslicemf, amrex::make_alias, Comps[nsl]["jy_beam"], 1);
     amrex::MultiFab BxBy (slicemf, amrex::make_alias, Comps[isl]["Bx" ], 2);
+    const amrex::MultiFab BxBy_p1(pslicemf, amrex::make_alias, Comps[psl]["Bx"], 2);
+    const amrex::MultiFab BxBy_p2(pslicemf2, amrex::make_alias, Comps[psl2]["Bx"], 2);
 
     // preparing conversion to normalized units, if applicable
     PhysConst pc = m_phys_const;
@@ -657,8 +661,22 @@ Hipace::ExplicitSolveBxBy (const int lev)
     const amrex::Real dy = Geom(lev).CellSize(Direction::y)/kpinv;
     const amrex::Real dz = Geom(lev).CellSize(Direction::z)/kpinv;
 
-    // transforming BxBy array to normalized units for use as initial guess
-    BxBy.mult(pc.c/E0);
+    // extrapolating and transforming BxBy array to normalized units for use as initial guess
+
+    /*for ( amrex::MFIter mfi(Bz, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi ){
+        std::cout << "Bx This: " << BxBy.array(mfi)(200,200,0,0) << '\n'
+            << "By This: " << BxBy.array(mfi)(200,200,0,1) << '\n'
+            << "Bx P1: " << BxBy_p1.array(mfi)(200,200,0,0) << '\n'
+            << "By P1: " << BxBy_p1.array(mfi)(200,200,0,1) << '\n'
+            << "Bx P2: " << BxBy_p2.array(mfi)(200,200,0,0) << '\n'
+            << "By P2: " << BxBy_p2.array(mfi)(200,200,0,1) << '\n';
+    }*/
+
+    const amrex::Real initial_guess_extrapolating = m_predcorr_B_mixing_factor; //TODO
+    amrex::MultiFab::LinComb(BxBy,
+        (initial_guess_extrapolating + 1) * pc.c/E0, BxBy_p1, 0,
+        (-initial_guess_extrapolating) * pc.c/E0, BxBy_p2, 0,
+        0, 2, 0);
 
     for ( amrex::MFIter mfi(Bz, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi ){
 
