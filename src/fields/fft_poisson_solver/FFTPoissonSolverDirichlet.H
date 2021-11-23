@@ -40,6 +40,8 @@ public:
                           amrex::DistributionMapping const& dm,
                           amrex::Geometry const& gm) override final;
 
+    void AddBoundaryConditions (amrex::MFIter& mfi);
+
     /**
      * Solve Poisson equation. The source term must be stored in the staging area m_stagingArea prior to this call.
      *
@@ -54,6 +56,12 @@ private:
     amrex::MultiFab m_eigenvalue_matrix;
     /** DST plans */
     AnyDST::DSTplans m_plan;
+
+    amrex::Geometry m_geom;
+
+    amrex::Gpu::DeviceVector<amrex::Real> m_multipol_coeff;
+
+    bool m_open_boundary = false;
 };
 
 #endif

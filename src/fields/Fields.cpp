@@ -77,18 +77,17 @@ Fields::CopyToStagingArea (const amrex::MultiFab& src, const SliceOperatorType s
     AMREX_ALWAYS_ASSERT_WITH_MESSAGE(src.size() == 1, "Slice MFs must be defined on one box only");
     const amrex::FArrayBox& src_fab = src[0];
     amrex::Box src_bx = src_fab.box();
-    src_bx.grow({-m_slices_nguards[0], -m_slices_nguards[1], 0});
     amrex::IntVect lo = src_bx.smallEnd();
 
     if (lo[0] == 0 && lo[1] == 0) {
         if (slice_operator==SliceOperatorType::Assign) {
             amrex::MultiFab::Copy(m_poisson_solver[lev]->StagingArea(),
                                   getSlices(lev,WhichSlice::This), Comps[WhichSlice::This]["jz"], 0,
-                                  1, 0);
+                                  1, m_slices_nguards);
         } else {
             amrex::MultiFab::Add(m_poisson_solver[lev]->StagingArea(),
                                  getSlices(lev,WhichSlice::This), Comps[WhichSlice::This]["rho"], 0,
-                                 1, 0);
+                                 1, m_slices_nguards);
         }
     } else {
 
@@ -400,7 +399,6 @@ constexpr int interp_order = 2;
                                Comps[WhichSlice::Previous1][component], 1);
     amrex::FArrayBox& lhs_fab = lhs_coarse[0];
     amrex::Box lhs_bx = lhs_fab.box();
-    lhs_bx.grow({-m_slices_nguards[0], -m_slices_nguards[1], 0});
     // low end of the coarse grid excluding guard cells
     const amrex::IntVect lo_coarse = lhs_bx.smallEnd();
 
@@ -409,7 +407,6 @@ constexpr int interp_order = 2;
                               Comps[WhichSlice::This][component], 1);
     amrex::FArrayBox& lhs_fine_fab = lhs_fine[0];
     amrex::Box lhs_fine_bx = lhs_fine_fab.box();
-    lhs_fine_bx.grow({-m_slices_nguards[0], -m_slices_nguards[1], 0});
     // low end of the fine grid excluding guard cells, in units of fine cells.
     const amrex::IntVect lo = lhs_fine_bx.smallEnd();
 
@@ -660,7 +657,7 @@ Fields::SolvePoissonExmByAndEypBx (amrex::Vector<amrex::Geometry> const& geom,
 
     /* ---------- Transverse FillBoundary Psi ---------- */
     amrex::ParallelContext::push(m_comm_xy);
-    lhs.FillBoundary(geom[lev].periodicity());
+    //lhs.FillBoundary(geom[lev].periodicity());
     amrex::ParallelContext::pop();
 
     InterpolateFromLev0toLev1(geom, lev, "Psi", islice);
