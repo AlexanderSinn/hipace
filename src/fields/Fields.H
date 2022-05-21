@@ -22,7 +22,7 @@ class Hipace;
 
 /** \brief describes which slice with respect to the currently calculated is used */
 struct WhichSlice {
-    enum slice { Next=0, This, Previous1, Previous2, RhoIons, N };
+    enum slice { Next=0, This, Previous1, Previous2, RhoIons, ExplicitSource, N };
 };
 
 struct assert_map : std::map<std::string, int> {
@@ -46,11 +46,11 @@ struct assert_map : std::map<std::string, int> {
 
 /** \brief Map names and indices of each fields in each slice
  */
-inline std::array<assert_map, 5> Comps{};
+inline std::array<assert_map, WhichSlice::N> Comps{};
 
 /** \brief number of fields in each slice
  */
-inline std::array<int, 5> N_Comps {0,0,0,0,0};
+inline std::array<int, WhichSlice::N> N_Comps {0,0,0,0,0,0};
 
 /** \brief Direction of each dimension. Can be used for clean handling 2D vs. 3D in the future */
 struct Direction{
@@ -82,7 +82,7 @@ class Fields
 {
 private:
     /** Number of slices in temporary slice object */
-    static constexpr int m_nslices = 5;
+    static constexpr int m_nslices = WhichSlice::N;
 
 public:
     /** Constructor */
@@ -137,8 +137,8 @@ public:
     /** check whether the fields are initialized correctly */
     void checkInit() {
         for (auto& slices_lev : m_slices) {
-            for (auto& slice : slices_lev) {
-                AMREX_ALWAYS_ASSERT_WITH_MESSAGE(slice.nGrowVect() == m_slices_nguards,
+            for (int islice=0; islice<WhichSlice::ExplicitSource; ++islice) {
+                AMREX_ALWAYS_ASSERT_WITH_MESSAGE(slices_lev[islice].nGrowVect() == m_slices_nguards,
                     "m_slices[lev][islice].nGrowVect() must be equal to m_slices_nguards");
             }
         }

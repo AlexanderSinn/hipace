@@ -142,7 +142,9 @@ Hipace::Hipace () :
     queryWithParser(pph, "MG_tolerance_rel", m_MG_tolerance_rel);
     queryWithParser(pph, "MG_tolerance_abs", m_MG_tolerance_abs);
     queryWithParser(pph, "MG_verbose", m_MG_verbose);
+#ifdef AMREX_USE_LINEAR_SOLVERS
     queryWithParser(pph, "use_amrex_mlmg", m_use_amrex_mlmg);
+#endif
     queryWithParser(pph, "do_tiling", m_do_tiling);
 #ifdef AMREX_USE_GPU
     AMREX_ALWAYS_ASSERT_WITH_MESSAGE(m_do_tiling==0, "Tiling must be turned off to run on GPU.");
@@ -648,16 +650,18 @@ Hipace::ExplicitSolveBxBy (const int lev)
     const amrex::MultiFab& nslicemf = m_fields.getSlices(lev, nsl);
     const int psl = WhichSlice::Previous1;
     const amrex::MultiFab& pslicemf = m_fields.getSlices(lev, psl);
-    const amrex::BoxArray ba = slicemf.boxArray();
-    const amrex::DistributionMapping dm = slicemf.DistributionMap();
+    const int esl = WhichSlice::ExplicitSource;
+    const amrex::MultiFab& eslicemf = m_fields.getSlices(lev, esl);
 
     int ncomp_mult = 1;
-#ifdef AMREX_USE_LINEAR_SOLVERS
     // Later this should have only 1 component, but we have 2 for now, with always the same values.
-    if (m_use_amrex_mlmg) { ncomp_mult = 2; }
-#endif
-    amrex::MultiFab Mult(ba, dm, ncomp_mult, 0);
-    amrex::MultiFab S(ba, dm, 2, 0);
+    if (m_use_amrex_mlmg) {
+        ncomp_mult = 2;
+        AMREX_ALWAYS_ASSERT(Comps[esl]["Mult"] + 1 == Comps[esl]["Mult2"]);
+    }
+    amrex::MultiFab Mult (eslicemf, amrex::make_alias, Comps[esl]["Mult"], ncomp_mult);
+    AMREX_ALWAYS_ASSERT(Comps[esl]["Sy"] + 1 == Comps[esl]["Sx"]);
+    amrex::MultiFab S (eslicemf, amrex::make_alias, Comps[esl]["Sy"], 2);
     Mult.setVal(0.);
     S.setVal(0.);
 
@@ -887,7 +891,7 @@ Hipace::ExplicitSolveBxBy (const int lev)
     } else
 #endif
     {
-        AMREX_ALWAYS_ASSERT(ba.size() == 1);
+        AMREX_ALWAYS_ASSERT(slicemf.boxArray().size() == 1);
         if (!m_hpmg) {
             m_hpmg = std::make_unique<hpmg::MultiGrid>(slice_geom);
         }

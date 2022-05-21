@@ -111,6 +111,15 @@ Fields::AllocData (
         if (m_any_neutral_background) {
             Comps[isl].multi_emplace(N_Comps[isl], "rho");
         }
+
+        isl = WhichSlice::ExplicitSource;
+        if (m_explicit) {
+            // explicit solver source terms: Sy for Bx and -Sx for By
+            Comps[isl].multi_emplace(N_Comps[isl], "Sy", "Sx", "Mult");
+            if (Hipace::GetInstance().m_use_amrex_mlmg) {
+                Comps[isl].multi_emplace(N_Comps[isl], "Mult2");
+            }
+        }
     }
 
     // set up m_all_charge_currents_names
@@ -129,13 +138,20 @@ Fields::AllocData (
             << " be added to rho_" << Hipace::GetInstance().m_multi_plasma.GetNames()[0] << "\n";
     }
 
+    std::cout << "Alloc now" << std::endl;
+
     // allocate memory for fields
     for (int islice=0; islice<WhichSlice::N; islice++) {
+        // Explicit solver source terms must have no ghost cells
+        const amrex::IntVect slice_guards = islice == WhichSlice::ExplicitSource ?
+            amrex::IntVect{0,0,0} : m_slices_nguards;
         m_slices[lev][islice].define(
-            slice_ba, slice_dm, N_Comps[islice], m_slices_nguards,
+            slice_ba, slice_dm, N_Comps[islice], slice_guards,
             amrex::MFInfo().SetArena(amrex::The_Arena()));
-        m_slices[lev][islice].setVal(0._rt, m_slices_nguards);
+        m_slices[lev][islice].setVal(0._rt, slice_guards);
     }
+
+    std::cout << "Alloc done" << std::endl;
 
     // The Poisson solver operates on transverse slices only.
     // The constructor takes the BoxArray and the DistributionMap of a slice,
