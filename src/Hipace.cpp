@@ -1327,8 +1327,21 @@ Hipace::Notify (const int step, const int it,
         if (np_total == 0) return;
         const amrex::Long psize = sizeof(BeamParticleContainer::SuperParticleType);
         const amrex::Long buffer_size = psize*np_total;
-        char*& psend_buffer = only_ghost ? m_psend_buffer_ghost : m_psend_buffer;
-        psend_buffer = (char*)amrex::The_Pinned_Arena()->alloc(buffer_size);
+        char*& psend_buffer_cpu = only_ghost ? m_psend_buffer_ghost : m_psend_buffer;
+        psend_buffer_cpu = (char*)amrex::The_Pinned_Arena()->alloc(buffer_size);
+        char* psend_buffer = psend_buffer_cpu;
+
+#ifdef AMREX_USE_GPU
+        bool pack_in_gpu = true;
+        if (pack_in_gpu && !amrex::The_Device_Arena()->hasFreeDeviceMemory(buffer_size)) {
+            pack_in_gpu = false;
+            amrex::Print() <<
+                "WARNING: Not enough GPU memory to pack beam particles, using CPU memory instead\n";
+        }
+        if (pack_in_gpu) {
+            psend_buffer = (char*)amrex::The_Device_Arena()->alloc(buffer_size);
+        }
+#endif
 
         int offset_beam = 0;
         for (int ibeam = 0; ibeam < nbeams; ibeam++){
@@ -1393,12 +1406,25 @@ Hipace::Notify (const int step, const int it,
                     ptd.packParticleData(p_psend_buffer, offset_box+src_i, i*psize, p_comm_real, p_comm_int);
                 }
             }
-            amrex::Gpu::Device::synchronize();
-
-            // Delete beam particles that we just sent from the particle array
-            if (!only_ghost) ptile.resize(offset_box);
             offset_beam += np;
         } // here
+
+#ifdef AMREX_USE_GPU
+        if (pack_in_gpu) {
+            amrex::Gpu::dtoh_memcpy_async(psend_buffer_cpu, psend_buffer, buffer_size);
+        }
+        amrex::Gpu::streamSynchronize();
+        if (pack_in_gpu) {
+            amrex::The_Device_Arena()->free(psend_buffer);
+        }
+#endif
+
+        // Delete beam particles that we just sent from the particle array
+        for (int ibeam = 0; ibeam < nbeams; ibeam++){
+            const int offset_box = m_box_sorters[ibeam].boxOffsetsPtr()[it];
+            auto& ptile = m_multi_beam.getBeam(ibeam);
+            if (!only_ghost) ptile.resize(offset_box);
+        }
 
         const int loc_pcomm_z_tag = only_ghost ? pcomm_z_tag_ghost : pcomm_z_tag;
         MPI_Request* loc_psend_request = only_ghost ? &m_psend_request_ghost : &m_psend_request;
@@ -1410,7 +1436,7 @@ Hipace::Notify (const int step, const int it,
                             &one_particle_size);
         MPI_Type_commit(&one_particle_size);
 
-        MPI_Isend(psend_buffer, np_total, one_particle_size,
+        MPI_Isend(psend_buffer_cpu, np_total, one_particle_size,
                   (m_rank_z-1+m_numprocs_z)%m_numprocs_z, loc_pcomm_z_tag, m_comm_z, loc_psend_request);
     }
 #endif
