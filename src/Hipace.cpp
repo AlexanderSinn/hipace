@@ -299,6 +299,9 @@ Hipace::InitData ()
 #endif
     m_physical_time = m_initial_time;
 
+    m_comm_real.assign(AMREX_SPACEDIM + m_multi_beam.NumRealComps(), 1);
+    m_comm_int.assign(AMREX_SPACEDIM + m_multi_beam.NumIntComps(), 1);
+
     m_fields.checkInit();
 }
 
@@ -1185,7 +1188,8 @@ Hipace::Wait (const int step, int it, bool only_ghost)
         if (np_total == 0) return;
         const amrex::Long psize = sizeof(BeamParticleContainer::SuperParticleType);
         const amrex::Long buffer_size = psize*np_total;
-        auto recv_buffer = (char*)amrex::The_Pinned_Arena()->alloc(buffer_size);
+        m_recv_buffer.resize(buffer_size);
+        char* recv_buffer = m_recv_buffer.dataPtr();
 
         MPI_Status status;
         const int loc_pcomm_z_tag = only_ghost ? pcomm_z_tag_ghost : pcomm_z_tag;
@@ -1209,10 +1213,8 @@ Hipace::Wait (const int step, int it, bool only_ghost)
             ptile.resize(new_size);
             const auto ptd = ptile.getParticleTileData();
 
-            const amrex::Gpu::DeviceVector<int> comm_real(AMREX_SPACEDIM + m_multi_beam.NumRealComps(), 1);
-            const amrex::Gpu::DeviceVector<int> comm_int (AMREX_SPACEDIM + m_multi_beam.NumIntComps(),  1);
-            const auto p_comm_real = comm_real.data();
-            const auto p_comm_int = comm_int.data();
+            const auto p_comm_real = m_comm_real.data();
+            const auto p_comm_int = m_comm_int.data();
 
 #ifdef AMREX_USE_GPU
             if (amrex::Gpu::inLaunchRegion() && np > 0) {
@@ -1260,7 +1262,6 @@ Hipace::Wait (const int step, int it, bool only_ghost)
         }
 
         amrex::Gpu::streamSynchronize();
-        amrex::The_Pinned_Arena()->free(recv_buffer);
     }
 
 #endif
@@ -1323,22 +1324,30 @@ Hipace::Notify (const int step, const int it,
     }
     np_snd[nbeams] = m_leftmost_box_snd;
 
-    // Each rank sends data downstream, except rank 0 who sends data to m_numprocs_z-1
-    const int loc_ncomm_z_tag = only_ghost ? ncomm_z_tag_ghost : ncomm_z_tag;
-    MPI_Request* loc_nsend_request = only_ghost ? &m_nsend_request_ghost : &m_nsend_request;
-    MPI_Isend(np_snd.dataPtr(), nint, amrex::ParallelDescriptor::Mpi_typemap<int>::type(),
-              (m_rank_z-1+m_numprocs_z)%m_numprocs_z, loc_ncomm_z_tag, m_comm_z, loc_nsend_request);
-
     // Send beam particles. Currently only one tile.
     {
         const amrex::Long np_total = std::accumulate(np_snd.begin(), np_snd.begin()+nbeams, 0);
         if (np_total == 0) return;
         const amrex::Long psize = sizeof(BeamParticleContainer::SuperParticleType);
         const amrex::Long buffer_size = psize*np_total;
-        char*& psend_buffer_cpu = only_ghost ? m_psend_buffer_ghost : m_psend_buffer;
-        psend_buffer_cpu = (char*)amrex::The_Pinned_Arena()->alloc(buffer_size);
-        char* psend_buffer = psend_buffer_cpu;
+        char* psend_buffer_cpu = nullptr;
+        if (only_ghost) {
+            HIPACE_PROFILE("Notify alloc pinned ghost");
+            m_psend_buffer_ghost.resize(buffer_size);
+            psend_buffer_cpu = m_psend_buffer_ghost.dataPtr();
+        } else {
+            HIPACE_PROFILE("Notify alloc pinned");
+            m_psend_buffer.resize(buffer_size);
+            psend_buffer_cpu = m_psend_buffer.dataPtr();
+        }
 
+        // Each rank sends data downstream, except rank 0 who sends data to m_numprocs_z-1
+        const int loc_ncomm_z_tag = only_ghost ? ncomm_z_tag_ghost : ncomm_z_tag;
+        MPI_Request* loc_nsend_request = only_ghost ? &m_nsend_request_ghost : &m_nsend_request;
+        MPI_Isend(np_snd.dataPtr(), nint, amrex::ParallelDescriptor::Mpi_typemap<int>::type(),
+                  (m_rank_z-1+m_numprocs_z)%m_numprocs_z, loc_ncomm_z_tag, m_comm_z, loc_nsend_request);
+
+        char* psend_buffer = psend_buffer_cpu;
 #ifdef AMREX_USE_GPU
         bool pack_in_gpu = true;
         if (pack_in_gpu && !amrex::The_Device_Arena()->hasFreeDeviceMemory(buffer_size)) {
@@ -1347,6 +1356,7 @@ Hipace::Notify (const int step, const int it,
                 "WARNING: Not enough GPU memory to pack beam particles, using CPU memory instead\n";
         }
         if (pack_in_gpu) {
+            HIPACE_PROFILE("Notify alloc device");
             psend_buffer = (char*)amrex::The_Device_Arena()->alloc(buffer_size);
         }
 #endif
@@ -1359,10 +1369,8 @@ Hipace::Notify (const int step, const int it,
             auto& ptile = m_multi_beam.getBeam(ibeam);
             const auto ptd = ptile.getConstParticleTileData();
 
-            const amrex::Gpu::DeviceVector<int> comm_real(AMREX_SPACEDIM + m_multi_beam.NumRealComps(), 1);
-            const amrex::Gpu::DeviceVector<int> comm_int (AMREX_SPACEDIM + m_multi_beam.NumIntComps(),  1);
-            const auto p_comm_real = comm_real.data();
-            const auto p_comm_int = comm_int.data();
+            const auto p_comm_real = m_comm_real.data();
+            const auto p_comm_int = m_comm_int.data();
             const auto p_psend_buffer = psend_buffer + offset_beam*psize;
 
             BeamBins::index_type const * const indices = bins[ibeam].permutationPtr();
@@ -1460,11 +1468,10 @@ Hipace::NotifyFinish (const int it, bool only_ghost, bool only_time)
             MPI_Wait(&m_nsend_request_ghost, &status);
             m_np_snd_ghost.resize(0);
         }
-        if (m_psend_buffer_ghost) {
+        if (m_psend_buffer_ghost.size() > 0) {
             MPI_Status status;
             MPI_Wait(&m_psend_request_ghost, &status);
-            amrex::The_Pinned_Arena()->free(m_psend_buffer_ghost);
-            m_psend_buffer_ghost = nullptr;
+            m_psend_buffer_ghost.resize(0);
         }
     } else {
         if (it == m_numprocs_z - 1) {
@@ -1482,11 +1489,10 @@ Hipace::NotifyFinish (const int it, bool only_ghost, bool only_time)
             MPI_Wait(&m_nsend_request, &status);
             m_np_snd.resize(0);
         }
-        if (m_psend_buffer) {
+        if (m_psend_buffer.size() > 0) {
             MPI_Status status;
             MPI_Wait(&m_psend_request, &status);
-            amrex::The_Pinned_Arena()->free(m_psend_buffer);
-            m_psend_buffer = nullptr;
+            m_psend_buffer.resize(0);
         }
     }
 #endif

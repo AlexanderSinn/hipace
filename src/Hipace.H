@@ -239,8 +239,16 @@ public:
     /** Max number of grid size in the longitudinal direction */
     int m_boxes_in_z = 1;
     /** Send buffer for particle longitudinal parallelization (pipeline) */
-    char* m_psend_buffer = nullptr;
-    char* m_psend_buffer_ghost = nullptr;
+    //char* m_psend_buffer = nullptr;
+    //char* m_psend_buffer_ghost = nullptr;
+
+
+    amrex::Gpu::DeviceVector<int> m_comm_real;
+    amrex::Gpu::DeviceVector<int> m_comm_int;
+    amrex::Gpu::PinnedVector<char> m_psend_buffer;
+    amrex::Gpu::PinnedVector<char> m_psend_buffer_ghost;
+    amrex::Gpu::PinnedVector<char> m_recv_buffer;
+
     amrex::Real m_tsend_buffer {-1.};
     /** Send buffer for the number of particles for each beam (pipeline) */
     amrex::Vector<int> m_np_snd = amrex::Vector<int>(0);
