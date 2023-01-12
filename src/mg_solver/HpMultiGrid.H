@@ -1,7 +1,7 @@
 /* Copyright 2022
  *
  * This file is part of HiPACE++.
- *
+ *array_rhs
  * Authors: Weiqun Zhang
  * License: BSD-3-Clause-LBNL
  */
@@ -15,6 +15,43 @@
 
 /** brief namespace for Hipace Multigrid */
 namespace hpmg {
+
+template <class T>
+struct ArrayC {
+    T* AMREX_RESTRICT p;
+    amrex::Long nstride = 0;
+    struct {
+        int x = 0;
+        int y = 0;
+    } end;
+
+    ArrayC (const amrex::Array4<T>& rhs) noexcept
+        : p(rhs.p),
+          nstride(rhs.nstride),
+          end{rhs.end.x, rhs.end.y}
+    {
+        if (p) {
+            AMREX_ALWAYS_ASSERT(rhs.begin.x == 0);
+            AMREX_ALWAYS_ASSERT(rhs.begin.y == 0);
+            AMREX_ALWAYS_ASSERT(rhs.begin.z == 0);
+            AMREX_ALWAYS_ASSERT(rhs.end.z == 1);
+        }
+        // slice is only one cell thick if allocated, begins at zero
+        AMREX_ALWAYS_ASSERT(!rhs.p || rhs.begin.x == 0 && rhs.begin.y == 0 &&
+                            rhs.begin.z == 0 && rhs.end.z == 1);
+    }
+
+    AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+    T& operator() (int i, int j, int n) const noexcept {
+#if defined(AMREX_DEBUG) || defined(AMREX_BOUND_CHECK)
+        if (i < 0 || i <= end.x || j < 0 || j <= end.y) {
+            amrex::Abort();
+        }
+#endif
+        const int color = (i + j) & 1;
+        return p[((end.x * (end.y * color + j) + i) >> 1) + n * nstride];
+    }
+};
 
 /** \brief Multigrid solver
  *
@@ -190,16 +227,16 @@ private:
     /** Fabs for residual of the residual-correction form, one for each level */
     amrex::Vector<amrex::FArrayBox> m_rescor;
 
-    /** Device pointer to Array4s used by the single-block kernel at the bottom */
-    amrex::Array4<amrex::Real> const* m_acf_a = nullptr;
-    amrex::Array4<amrex::Real> const* m_res_a = nullptr;
-    amrex::Array4<amrex::Real> const* m_cor_a = nullptr;
-    amrex::Array4<amrex::Real> const* m_rescor_a = nullptr;
+    /** Device pointer to ArrayCs used by the single-block kernel at the bottom */
+    ArrayC<amrex::Real> const* m_acf_a = nullptr;
+    ArrayC<amrex::Real> const* m_res_a = nullptr;
+    ArrayC<amrex::Real> const* m_cor_a = nullptr;
+    ArrayC<amrex::Real> const* m_rescor_a = nullptr;
 
     /** Pinned vector as a staging area for memcpy to device */
-    amrex::Gpu::PinnedVector<amrex::Array4<amrex::Real> > m_h_array4;
-    /** Device vector of Array4s used by the single-block kernel at the bottom */
-    amrex::Gpu::DeviceVector<amrex::Array4<amrex::Real> > m_d_array4;
+    amrex::Gpu::PinnedVector<ArrayC<amrex::Real> > m_h_ArrayC;
+    /** Device vector of ArrayCs used by the single-block kernel at the bottom */
+    amrex::Gpu::DeviceVector<ArrayC<amrex::Real> > m_d_ArrayC;
 
 #if defined(AMREX_USE_CUDA)
     /** CUDA graphs for average-down */
@@ -262,6 +299,44 @@ void ParallelFor (amrex::Box const& box, int ncomp, F&& f) noexcept
 }
 
 #endif
+
+
+template <typename F>
+void ParallelForCheckerboard (amrex::Box const& box, int ncomp, F&& f, int color=-1) noexcept
+{
+    const int len_x = box.length(0);
+    const int len_y = box.length(1);
+
+    AMREX_ALWAYS_ASSERT(box.length(2) == 1 && box.smallEnd() == amrex::IntVect::TheZeroVector());
+
+    int npts = 0;
+    int start = 0;
+    if (color==-1) {
+        npts = len_x * len_y;
+    } else if (color%2==0) {
+        npts = (len_x * len_y + 1)/2;
+    } else {
+        start = (len_x * len_y + 1)/2;
+        npts = (len_x * len_y)/2;
+    }
+
+    ParallelFor(npts,
+        [=] AMREX_GPU_DEVICE (int idx) noexcept {
+            //const int n = idx / npts;
+            idx += start ;//- n * npts;
+
+            const int color_loc = 2 * idx >= len_x * len_y;
+
+            const int idxn = 2 * idx - (len_x * len_y - !(len_y&1) ) * color_loc;
+
+            const int j = idxn / len_x;
+            int i = idxn - j * len_x;
+
+            i += !(len_x&1)*( (j&1)*(1-2*color_loc)*!(len_y&1) + ((j&1)^color_loc)*(len_y&1) );
+
+            for (int n=0; n<ncomp; ++n) f(i, j, n);
+        });
+}
 
 }
 
