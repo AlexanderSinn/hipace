@@ -105,6 +105,8 @@ public:
      */
     void UpdateDensityFunction ();
 
+    void SortParticles (const amrex::Geometry& slice_geom);
+
     /** returns u_mean of the plasma distribution */
     amrex::RealVect GetUMean () const {return m_u_mean;}
 

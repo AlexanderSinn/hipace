@@ -648,6 +648,8 @@ Hipace::ExplicitSolveOneSubSlice (const int lev, const int step, const int ibox,
     m_fields.setVal(0., lev, WhichSlice::This, "chi", "Sy", "Sx", "ExmBy", "EypBx", "Ez",
         "Bz", "Psi", "jz_beam", "rho_beam", "jz", "rho");
 
+    if (lev==0 && islice % 4 == 0) m_multi_plasma.SortParticles(m_slice_geom[0]);
+
     if (m_do_tiling) m_multi_plasma.TileSort(bx, geom[lev]);
 
     // deposit jx, jy, jz, rho and chi for all plasmas
@@ -707,6 +709,8 @@ Hipace::PredictorCorrectorSolveOneSubSlice (const int lev, const int step, const
     if (m_use_laser) {
         m_fields.setVal(0., lev, WhichSlice::This, "chi");
     }
+
+    if (lev==0 && islice % 4 == 0) m_multi_plasma.SortParticles(m_slice_geom[0]);
 
     if (m_do_tiling) m_multi_plasma.TileSort(bx, geom[lev]);
 

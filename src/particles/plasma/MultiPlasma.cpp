@@ -21,6 +21,7 @@ MultiPlasma::MultiPlasma (amrex::AmrCore* amr_core)
     queryWithParser(pp, "adaptive_density", m_adaptive_density);
     queryWithParser(pp, "sort_bin_size", m_sort_bin_size);
     queryWithParser(pp, "collisions", m_collision_names);
+    queryWithParser(pp, "sort_type", m_sort_type);
 
     if (m_names[0] == "no_plasma") return;
     m_nplasmas = m_names.size();
@@ -174,6 +175,20 @@ MultiPlasma::TileSort (amrex::Box bx, amrex::Geometry geom)
     for (auto& plasma : m_all_plasmas) {
         m_all_bins.emplace_back(
             findParticlesInEachTile(lev, bx, m_sort_bin_size, plasma, geom));
+    }
+}
+
+void
+MultiPlasma::SortParticles (const amrex::Geometry& slice_geom)
+{
+    HIPACE_PROFILE("MultiPlasma::SortPlasma");
+    for (auto& plasma : m_all_plasmas) {
+        if (m_sort_type == 1) {
+            plasma.SortParticles(slice_geom);
+        } else if (m_sort_type == 2) {
+            HIPACE_PROFILE("MultiPlasma::SortTransposed");
+            plasma.SortParticlesByCell();
+        }
     }
 }
 

@@ -122,6 +122,8 @@ public:
      */
     void TileSort (amrex::Box bx, amrex::Geometry geom);
 
+    void SortParticles (const amrex::Geometry& slice_geom);
+
     /** returns a Vector of names of the plasmas */
     const amrex::Vector<std::string>& GetNames() const {return m_names;}
 
@@ -139,6 +141,8 @@ public:
     void doCoulombCollision (int lev, amrex::Box bx, amrex::Geometry geom);
 
     int m_sort_bin_size {32}; /**< Tile size to sort plasma particles */
+
+    int m_sort_type = 0;
 
     /** Number of binary collisions */
     int m_ncollisions = 0;

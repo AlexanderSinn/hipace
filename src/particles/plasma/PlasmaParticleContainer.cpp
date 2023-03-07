@@ -173,6 +173,99 @@ PlasmaParticleContainer::UpdateDensityFunction ()
 }
 
 void
+PlasmaParticleContainer::SortParticles (const amrex::Geometry& slice_geom)
+{
+    const int lev = 0;
+    const auto dxi = slice_geom.InvCellSizeArray();
+    const auto plo = slice_geom.ProbLoArray();
+    const auto domain = slice_geom.Domain();
+
+    for (amrex::MFIter mfi = MakeMFIter(lev, DfltMfi); mfi.isValid(); ++mfi)
+    {
+        auto& ptile = ParticlesAt(lev, mfi);
+        auto& aos = ptile.GetArrayOfStructs();
+        auto  pstruct_ptr = aos().dataPtr();
+        const int np = aos.size();
+        const int ntiles = (domain.numPts() + 1024 -1)/1024 * 1024;
+
+        amrex::Gpu::DeviceVector<int> llist_start(ntiles, -1);
+        int* p_llist_start = llist_start.dataPtr();
+        amrex::Gpu::DeviceVector<int> llist_next(np);
+        int* p_llist_next = llist_next.dataPtr();
+
+        {HIPACE_PROFILE("PlasmaParticleContainer::SortLink");
+        amrex::ParallelFor(np,
+            [=] AMREX_GPU_DEVICE (int idx) {
+                idx = np - idx - 1;
+                amrex::IntVect iv = amrex::getParticleCell(pstruct_ptr[idx], plo, dxi, domain);
+                amrex::Long index = domain.index(iv);
+                p_llist_next[idx] = amrex::Gpu::Atomic::Exch(p_llist_start + index, idx);
+            });}
+
+        amrex::Gpu::DeviceVector<int> perm(np);
+        int* p_perm = perm.dataPtr();
+        amrex::Gpu::DeviceScalar<int> global_idx(0);
+        int* p_global_idx = global_idx.dataPtr();
+
+#ifdef AMREX_USE_GPU
+        {HIPACE_PROFILE("PlasmaParticleContainer::SortPrefix");
+        amrex::launch<1024>(ntiles/1024, amrex::Gpu::gpuStream(),
+            [=] AMREX_GPU_DEVICE () {
+                __shared__ int sdata[1024];
+                int current_idx = p_llist_start[threadIdx.x + 1024 * blockIdx.x];
+
+                while (true) {
+                    sdata[threadIdx.x] = int(current_idx != -1);
+                    int x = 0;
+
+                    for (int i = 1; i<1024; i*=2) {
+                        __syncthreads();
+                        if (threadIdx.x >= i) x = sdata[threadIdx.x - i];
+                        __syncthreads();
+                        if (threadIdx.x >= i) sdata[threadIdx.x] += x;
+                    }
+                    __syncthreads();
+                    if (sdata[1023] == 0) break;
+                    __syncthreads();
+                    if (threadIdx.x == 1023) {
+                        x = sdata[1023];
+                        sdata[1023] = amrex::Gpu::Atomic::Add(p_global_idx, x);
+                    }
+                    __syncthreads();
+                    if (threadIdx.x < 1023) sdata[threadIdx.x] += sdata[1023];
+                    __syncthreads();
+                    if (threadIdx.x == 1023) sdata[1023] += x;
+                    __syncthreads();
+
+                    if (current_idx != -1) {
+                        p_perm[sdata[threadIdx.x]-1] = current_idx;
+                        current_idx = p_llist_next[current_idx];
+                    }
+                }
+            });}
+#else
+        amrex::ParallelFor(ntiles,
+            [=] AMREX_GPU_DEVICE (int current_idx) {
+                int current_idx = p_llist_start[current_idx];
+
+                while(current_idx != -1) {
+                    p_perm[(*p_global_idx)++] = current_idx;
+                    current_idx = p_llist_next[current_idx];
+                }
+            });
+#endif
+
+        {HIPACE_PROFILE("PlasmaParticleContainer::SortReorder");
+        ParticleTileType ptile_tmp;
+        ptile_tmp.define(NumRuntimeRealComps(), NumRuntimeIntComps());
+        ptile_tmp.resize(np);
+        // copy re-ordered particles
+        amrex::gatherParticles(ptile_tmp, ptile, np, p_perm);
+        ptile.swap(ptile_tmp);}
+    }
+}
+
+void
 PlasmaParticleContainer::
 IonizationModule (const int lev,
                   const amrex::Geometry& geom,
