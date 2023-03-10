@@ -69,6 +69,11 @@ ExplicitDeposition (PlasmaParticleContainer& plasma, Fields& fields, const Multi
         const amrex::Real charge_invvol_mu0 = plasma.m_charge * invvol * pc.mu0;
         const amrex::Real charge_mass_ratio = plasma.m_charge / plasma.m_mass;
 
+        //int* p_perm = plasma.m_perm.dataPtr();
+
+        //int* p_llist_start = plasma.m_llist_start.dataPtr();
+        //int* p_llist_next = plasma.m_llist_next.dataPtr();
+
         amrex::ParallelFor(
             amrex::TypeList<
                 amrex::CompileTimeOptions<0, 1, 2, 3>,  // depos_order
@@ -86,6 +91,10 @@ ExplicitDeposition (PlasmaParticleContainer& plasma, Fields& fields, const Multi
                                           auto can_ionize, auto use_laser) noexcept {
                 constexpr int depos_order = a_depos_order.value;
                 constexpr int derivative_type = a_derivative_type.value;
+
+                //ip = p_perm[ip];
+                //ip = p_llist_start[ip];
+                //while(ip != -1) {
 
                 const auto positions = pos_structs[ip];
                 if (positions.id() < 0) return;
@@ -213,6 +222,10 @@ ExplicitDeposition (PlasmaParticleContainer& plasma, Fields& fields, const Multi
                         ));
                     }
                 }
+
+                //ip = p_llist_next[ip];
+                //}
+
             });
     }
 }

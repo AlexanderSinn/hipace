@@ -176,9 +176,15 @@ void
 PlasmaParticleContainer::SortParticles (const amrex::Geometry& slice_geom)
 {
     const int lev = 0;
-    const auto dxi = slice_geom.InvCellSizeArray();
-    const auto plo = slice_geom.ProbLoArray();
-    const auto domain = slice_geom.Domain();
+    amrex::Geometry geom = slice_geom;
+
+    geom.refine({2, 2, 1});
+
+    const auto dxi = geom.InvCellSizeArray();
+    const auto plo = geom.ProbLoArray();
+    const auto domain = geom.Domain();
+    const auto init_domain = slice_geom.Domain();
+
 
     for (amrex::MFIter mfi = MakeMFIter(lev, DfltMfi); mfi.isValid(); ++mfi)
     {
@@ -187,23 +193,34 @@ PlasmaParticleContainer::SortParticles (const amrex::Geometry& slice_geom)
         auto  pstruct_ptr = aos().dataPtr();
         const int np = aos.size();
         const int ntiles = (domain.numPts() + 1024 -1)/1024 * 1024;
+        m_ntiles = ntiles;
 
-        amrex::Gpu::DeviceVector<int> llist_start(ntiles, -1);
-        int* p_llist_start = llist_start.dataPtr();
-        amrex::Gpu::DeviceVector<int> llist_next(np);
-        int* p_llist_next = llist_next.dataPtr();
+        m_llist_start.resize(ntiles);
+        m_llist_start.assign(ntiles, -1);
+        int* p_llist_start = m_llist_start.dataPtr();
+        m_llist_next.resize(np);
+        int* p_llist_next = m_llist_next.dataPtr();
 
         {HIPACE_PROFILE("PlasmaParticleContainer::SortLink");
         amrex::ParallelFor(np,
             [=] AMREX_GPU_DEVICE (int idx) {
                 idx = np - idx - 1;
                 amrex::IntVect iv = amrex::getParticleCell(pstruct_ptr[idx], plo, dxi, domain);
-                amrex::Long index = domain.index(iv);
+
+                int extra = (iv[0] % 2) * 2 + (iv[1] % 2);
+
+                amrex::Long index = init_domain.index({iv[0]/2, iv[1]/2, iv[2]});
+
+                index += extra * (ntiles/4);
+
+                // amrex::Long index = init_domain.domain(iv);
+
                 p_llist_next[idx] = amrex::Gpu::Atomic::Exch(p_llist_start + index, idx);
             });}
 
-        amrex::Gpu::DeviceVector<int> perm(np);
-        int* p_perm = perm.dataPtr();
+        m_perm.resize(np);
+        int* p_perm = m_perm.dataPtr();
+
         amrex::Gpu::DeviceScalar<int> global_idx(0);
         int* p_global_idx = global_idx.dataPtr();
 

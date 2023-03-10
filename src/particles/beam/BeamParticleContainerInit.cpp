@@ -168,7 +168,7 @@ InitBeamFixedPPC (const amrex::IntVect& a_num_particles_per_cell,
                 unsigned int uix = amrex::min(nx-1,amrex::max(0,ix));
                 unsigned int uiy = amrex::min(ny-1,amrex::max(0,iy));
                 unsigned int uiz = amrex::min(nz-1,amrex::max(0,iz));
-                unsigned int cellid = (uix * ny + uiy) * nz + uiz;
+                unsigned int cellid = (uiz * ny + uiy) * nx + uix;
                 pcount[cellid] += 1;
             }
         });
@@ -208,7 +208,7 @@ InitBeamFixedPPC (const amrex::IntVect& a_num_particles_per_cell,
             unsigned int uix = amrex::min(nx-1,amrex::max(0,ix));
             unsigned int uiy = amrex::min(ny-1,amrex::max(0,iy));
             unsigned int uiz = amrex::min(nz-1,amrex::max(0,iz));
-            unsigned int cellid = (uix * ny + uiy) * nz + uiz;
+            unsigned int cellid = (uiz * ny + uiy) * nx + uix;
 
             int pidx = int(poffset[cellid] - poffset[0]);
 

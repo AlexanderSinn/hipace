@@ -159,6 +159,12 @@ public:
     /** initial number of particles before ones are added through ionization */
     std::map<int,unsigned long> m_init_num_par;
 
+    amrex::Gpu::DeviceVector<int> m_llist_start;
+    amrex::Gpu::DeviceVector<int> m_llist_next;
+    amrex::Gpu::DeviceVector<int> m_perm;
+
+    int m_ntiles;
+
 private:
     std::string m_name; /**< name of the species */
 };
