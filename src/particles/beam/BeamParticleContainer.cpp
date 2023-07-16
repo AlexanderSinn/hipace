@@ -265,31 +265,139 @@ void
 BeamParticleContainer::intializeSlice (int slice, int which_slice) {
     HIPACE_PROFILE("BeamParticleContainer::intializeSlice()");
 
-    const int num_particles = m_init_sorter.m_box_counts_cpu[slice];
+    const int num_particles = m_init_sorter.m_box_counts[slice];
 
     resize(which_slice, num_particles, 0);
 
     auto ptd_init = getBeamInitSlice().getParticleTileData();
-    auto ptd = getBeamSlice(which_slice).getParticleTileData();
+    auto& soa_init = getBeamInitSlice().GetStructOfArrays();
+    auto& soa = getBeamSlice(which_slice).GetStructOfArrays();
 
-    const int slice_offset = m_init_sorter.m_box_offsets_cpu[slice];
-    const auto permutations = m_init_sorter.m_box_permutations.dataPtr();
+    const int slice_offset = m_init_sorter.m_box_offsets[slice];
 
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice,
+        soa_init.GetRealData(BeamIdx::x).begin() + slice_offset,
+        soa_init.GetRealData(BeamIdx::x).begin() + slice_offset + num_particles,
+        soa.GetRealData(BeamIdx::x).begin());
+
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice,
+        soa_init.GetRealData(BeamIdx::y).begin() + slice_offset,
+        soa_init.GetRealData(BeamIdx::y).begin() + slice_offset + num_particles,
+        soa.GetRealData(BeamIdx::y).begin());
+
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice,
+        soa_init.GetRealData(BeamIdx::z).begin() + slice_offset,
+        soa_init.GetRealData(BeamIdx::z).begin() + slice_offset + num_particles,
+        soa.GetRealData(BeamIdx::z).begin());
+
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice,
+        soa_init.GetRealData(BeamIdx::w).begin() + slice_offset,
+        soa_init.GetRealData(BeamIdx::w).begin() + slice_offset + num_particles,
+        soa.GetRealData(BeamIdx::w).begin());
+
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice,
+        soa_init.GetRealData(BeamIdx::ux).begin() + slice_offset,
+        soa_init.GetRealData(BeamIdx::ux).begin() + slice_offset + num_particles,
+        soa.GetRealData(BeamIdx::ux).begin());
+
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice,
+        soa_init.GetRealData(BeamIdx::uy).begin() + slice_offset,
+        soa_init.GetRealData(BeamIdx::uy).begin() + slice_offset + num_particles,
+        soa.GetRealData(BeamIdx::uy).begin());
+
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice,
+        soa_init.GetRealData(BeamIdx::uz).begin() + slice_offset,
+        soa_init.GetRealData(BeamIdx::uz).begin() + slice_offset + num_particles,
+        soa.GetRealData(BeamIdx::uz).begin());
+
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice,
+        soa_init.GetIntData(BeamIdx::id).begin() + slice_offset,
+        soa_init.GetIntData(BeamIdx::id).begin() + slice_offset + num_particles,
+        soa.GetIntData(BeamIdx::id).begin());
+
+
+    /*const auto permutations = m_init_sorter.m_box_permutations.dataPtr();
+    amrex::Gpu::PinnedVector<amrex::Real> tmp_x (m_init_sorter.m_max_counts);
+    amrex::Gpu::PinnedVector<amrex::Real> tmp_y (m_init_sorter.m_max_counts);
+    amrex::Gpu::PinnedVector<amrex::Real> tmp_z (m_init_sorter.m_max_counts);
+    amrex::Gpu::PinnedVector<amrex::Real> tmp_w (m_init_sorter.m_max_counts);
+    amrex::Gpu::PinnedVector<amrex::Real> tmp_ux (m_init_sorter.m_max_counts);
+    amrex::Gpu::PinnedVector<amrex::Real> tmp_uy (m_init_sorter.m_max_counts);
+    amrex::Gpu::PinnedVector<amrex::Real> tmp_uz (m_init_sorter.m_max_counts);
+    amrex::Gpu::PinnedVector<int> tmp_id (m_init_sorter.m_max_counts);
+
+    for (int ip=0; ip<num_particles; ++ip) {
+        const int idx_src = permutations[slice_offset + ip];
+        tmp_x[ip] = ptd_init.rdata(BeamIdx::x)[idx_src];
+    }
+
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice, tmp_x.begin(), tmp_x.begin() + num_particles,
+                          soa.GetRealData(BeamIdx::x).begin());
+
+    for (int ip=0; ip<num_particles; ++ip) {
+        const int idx_src = permutations[slice_offset + ip];
+        tmp_y[ip] = ptd_init.rdata(BeamIdx::y)[idx_src];
+    }
+
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice, tmp_y.begin(), tmp_y.begin() + num_particles,
+                          soa.GetRealData(BeamIdx::y).begin());
+
+    for (int ip=0; ip<num_particles; ++ip) {
+        const int idx_src = permutations[slice_offset + ip];
+        tmp_z[ip] = ptd_init.rdata(BeamIdx::z)[idx_src];
+    }
+
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice, tmp_z.begin(), tmp_z.begin() + num_particles,
+                          soa.GetRealData(BeamIdx::z).begin());
+
+    for (int ip=0; ip<num_particles; ++ip) {
+        const int idx_src = permutations[slice_offset + ip];
+        tmp_w[ip] = ptd_init.rdata(BeamIdx::w)[idx_src];
+    }
+
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice, tmp_w.begin(), tmp_w.begin() + num_particles,
+                          soa.GetRealData(BeamIdx::w).begin());
+
+    for (int ip=0; ip<num_particles; ++ip) {
+        const int idx_src = permutations[slice_offset + ip];
+        tmp_ux[ip] = ptd_init.rdata(BeamIdx::ux)[idx_src];
+    }
+
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice, tmp_ux.begin(), tmp_ux.begin() + num_particles,
+                          soa.GetRealData(BeamIdx::ux).begin());
+
+    for (int ip=0; ip<num_particles; ++ip) {
+        const int idx_src = permutations[slice_offset + ip];
+        tmp_uy[ip] = ptd_init.rdata(BeamIdx::uy)[idx_src];
+    }
+
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice, tmp_uy.begin(), tmp_uy.begin() + num_particles,
+                          soa.GetRealData(BeamIdx::uy).begin());
+
+    for (int ip=0; ip<num_particles; ++ip) {
+        const int idx_src = permutations[slice_offset + ip];
+        tmp_uz[ip] = ptd_init.rdata(BeamIdx::uz)[idx_src];
+    }
+
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice, tmp_uz.begin(), tmp_uz.begin() + num_particles,
+                          soa.GetRealData(BeamIdx::uz).begin());
+
+    for (int ip=0; ip<num_particles; ++ip) {
+        const int idx_src = permutations[slice_offset + ip];
+        tmp_id[ip] = ptd_init.idata(BeamIdx::id)[idx_src];
+    }
+
+    amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice, tmp_id.begin(), tmp_id.begin() + num_particles,
+                          soa.GetIntData(BeamIdx::id).begin());
+    */
+    int * const cpu_ptr = soa.GetIntData(BeamIdx::cpu).dataPtr();
     amrex::ParallelFor(num_particles,
         [=] AMREX_GPU_DEVICE (const int ip) {
-            const int idx_src = permutations[slice_offset + ip];
-            ptd.rdata(BeamIdx::x)[ip] = ptd_init.rdata(BeamIdx::x)[idx_src];
-            ptd.rdata(BeamIdx::y)[ip] = ptd_init.rdata(BeamIdx::y)[idx_src];
-            ptd.rdata(BeamIdx::z)[ip] = ptd_init.rdata(BeamIdx::z)[idx_src];
-            ptd.rdata(BeamIdx::w)[ip] = ptd_init.rdata(BeamIdx::w)[idx_src];
-            ptd.rdata(BeamIdx::ux)[ip] = ptd_init.rdata(BeamIdx::ux)[idx_src];
-            ptd.rdata(BeamIdx::uy)[ip] = ptd_init.rdata(BeamIdx::uy)[idx_src];
-            ptd.rdata(BeamIdx::uz)[ip] = ptd_init.rdata(BeamIdx::uz)[idx_src];
-
-            ptd.idata(BeamIdx::id)[ip] = ptd_init.idata(BeamIdx::id)[idx_src];
-            ptd.idata(BeamIdx::cpu)[ip] = 0;
+            cpu_ptr[ip] = 0;
         }
     );
+
+    amrex::Gpu::streamSynchronize();
 }
 
 void

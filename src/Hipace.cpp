@@ -402,6 +402,7 @@ Hipace::Evolve ()
 void
 Hipace::SolveOneSlice (int islice, int step)
 {
+    std::cout << "Rank " << amrex::ParallelDescriptor::MyProc() << " step " << step << " islice " << islice << std::endl;
 #ifdef AMREX_USE_MPI
     {
         // Call a MPI function so that the MPI implementation has a chance to

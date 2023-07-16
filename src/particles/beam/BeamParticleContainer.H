@@ -54,8 +54,8 @@ using BeamTileInit = amrex::ParticleTile<
             BeamIdx::int_nattribs_in_buffer
         >,
         BeamIdx::real_nattribs_in_buffer,
-        BeamIdx::int_nattribs_in_buffer /*,
-        amrex::PinnedArenaAllocator*/
+        BeamIdx::int_nattribs_in_buffer,
+        amrex::PinnedArenaAllocator
     >;
 
 /** \brief Container for particles of 1 beam species. */
