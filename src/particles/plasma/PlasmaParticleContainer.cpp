@@ -149,6 +149,7 @@ PlasmaParticleContainer::ReadParameters ()
         {Hipace::m_depos_order_xy % 2, Hipace::m_depos_order_xy % 2};
     queryWithParserAlt(pp, "reorder_idx_type", idx_array, pp_alt);
     m_reorder_idx_type = amrex::IntVect(idx_array[0], idx_array[1], 0);
+    queryWithParserAlt(pp, "sort_for_deposition", m_sort_for_deposition, pp_alt);
     queryWithParserAlt(pp, "insitu_period", m_insitu_period, pp_alt);
     queryWithParserAlt(pp, "insitu_file_prefix", m_insitu_file_prefix, pp_alt);
 
@@ -197,7 +198,11 @@ PlasmaParticleContainer::ReorderParticles (const int islice)
 {
     HIPACE_PROFILE("PlasmaParticleContainer::ReorderParticles()");
     if (m_reorder_period > 0 && islice % m_reorder_period == 0) {
-        SortParticlesForDeposition(m_reorder_idx_type);
+        if (m_sort_for_deposition) {
+            SortParticlesForDeposition(m_reorder_idx_type);
+        } else {
+            SortParticlesByCell();
+        }
     }
 }
 

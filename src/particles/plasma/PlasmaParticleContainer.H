@@ -192,6 +192,7 @@ public:
     int m_reorder_period = 0;
     /** 2D reordering index type. 0: cell, 1: node, 2: both */
     amrex::IntVect m_reorder_idx_type = {0, 0, 0};
+    bool m_sort_for_deposition = true;
     /** How often the insitu plasma diagnostics should be computed and written
      * Default is 0, meaning no output */
     int m_insitu_period {0};
