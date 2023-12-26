@@ -17,9 +17,7 @@ int main (int argc, char* argv[])
     amrex::Initialize(argc,argv,true,MPI_COMM_WORLD,Parser::setDefaultParams);
     {
         HIPACE_PROFILE("main()");
-        Hipace hipace;
-        hipace.InitData();
-        hipace.Evolve();
+        Hipace::MemTest();
     }
     amrex::Finalize();
 }

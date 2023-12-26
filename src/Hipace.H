@@ -82,6 +82,8 @@ public:
     /** Run the simulation. This function contains the loop over time steps */
     void Evolve ();
 
+    static void MemTest();
+
     /** Make Geometry, DistributionMapping and BoxArray for all MR levels */
     void MakeGeometry ();
 

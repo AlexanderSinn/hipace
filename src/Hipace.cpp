@@ -320,6 +320,248 @@ Hipace::MakeGeometry ()
     }
 }
 
+
+template<class data_type> void
+Benchmark (int num_elements, const int* p_permutations, data_type* p_testvect, std::string str) {
+
+    amrex::Gpu::streamSynchronize();
+
+    double time = 0.;
+    double time_sq = 0.;
+    const int niter1 = 4;
+    const int niter2 = 1;
+
+    for (int iter=0; iter<niter1; ++iter) {
+
+        double t1 = amrex::second();
+
+        for (int iter2=0; iter2<niter2; ++iter2) {
+            amrex::ParallelFor(num_elements,
+                [=] AMREX_GPU_DEVICE (int i) noexcept
+                {
+                    const int index = p_permutations[i];
+                    amrex::Gpu::Atomic::Add(p_testvect + index, data_type(0.1));
+                    amrex::Gpu::Atomic::Add(p_testvect + index+8200, data_type(0.1));
+                    amrex::Gpu::Atomic::Add(p_testvect + index+16400, data_type(0.1));
+                    amrex::Gpu::Atomic::Add(p_testvect + index+1, data_type(0.1));
+                    amrex::Gpu::Atomic::Add(p_testvect + index+8201, data_type(0.1));
+                    amrex::Gpu::Atomic::Add(p_testvect + index+16401, data_type(0.1));
+                    amrex::Gpu::Atomic::Add(p_testvect + index+2, data_type(0.1));
+                    amrex::Gpu::Atomic::Add(p_testvect + index+8202, data_type(0.1));
+                    amrex::Gpu::Atomic::Add(p_testvect + index+16402, data_type(0.1));
+                });
+        }
+
+        amrex::Gpu::streamSynchronize();
+
+        double t2 = amrex::second();
+
+        time += (t2-t1);
+        time_sq += (t2-t1)*(t2-t1);
+    }
+
+    time /= niter1 * niter2;
+    time_sq /= niter1 * niter2 * niter2;
+
+    double rate = 100 * 0.0500 / time;
+    std::string vis_str(int(rate), '|');
+
+    std::cout << std::setw(30) << str << " time: "
+              << std::fixed << std::setprecision(4) << time << " +- "
+              << std::setprecision(2) << 100*std::sqrt(time_sq - time*time)/time << " % "
+              << vis_str << std::endl;
+
+    amrex::ParallelFor(num_elements+16403,
+        [=] AMREX_GPU_DEVICE (int i) noexcept
+        {
+            p_testvect[i] = data_type{0};
+        });
+
+    amrex::Gpu::streamSynchronize();
+
+}
+
+
+void
+Hipace::MemTest () {
+    HIPACE_PROFILE("Hipace::MemTest()");
+
+    constexpr int num_elements = 1024*1024*1024;
+
+    using data_type = double;
+
+    amrex::Gpu::DeviceVector<int> permutations(num_elements, 0);
+    amrex::Gpu::DeviceVector<data_type> testvect(num_elements+16403, data_type(0));
+
+    const auto p_permutations = permutations.dataPtr();
+    auto p_testvect = testvect.dataPtr();
+
+    amrex::ParallelFor(num_elements,
+        [=] AMREX_GPU_DEVICE (int i) noexcept
+        {
+            p_permutations[i] = i;
+        });
+
+    Benchmark(num_elements, p_permutations, p_testvect, "warm-up");
+    Benchmark(num_elements, p_permutations, p_testvect, "fully coalesced");
+
+    amrex::ParallelFor(num_elements,
+        [=] AMREX_GPU_DEVICE (int i) noexcept
+        {
+            p_permutations[i] = num_elements - 1 - i;
+        });
+
+    Benchmark(num_elements, p_permutations, p_testvect, "coalesced reversed");
+
+    amrex::ParallelFor(num_elements,
+        [=] AMREX_GPU_DEVICE (int i) noexcept
+        {
+            if (i < num_elements/2) {
+                p_permutations[i] = 2 * i;
+            } else {
+                p_permutations[i] = 2 * (i - num_elements/2) + 1;
+            }
+        });
+
+    Benchmark(num_elements, p_permutations, p_testvect, "stride 2");
+
+    amrex::ParallelFor(num_elements,
+        [=] AMREX_GPU_DEVICE (int i) noexcept
+        {
+            if (i % 2 == 0) {
+                p_permutations[i] = i;
+            } else if (i < num_elements/2) {
+                p_permutations[i] = i + num_elements/2;
+            } else {
+                p_permutations[i] = i - num_elements/2;
+            }
+        });
+
+    Benchmark(num_elements, p_permutations, p_testvect, "every second coalesced");
+
+    for (int c=128; c<=num_elements && c>0; c*=2) {
+        amrex::ParallelForRNG(num_elements,
+            [=] AMREX_GPU_DEVICE (int i, const amrex::RandomEngine& engine) noexcept
+            {
+                p_permutations[i] = amrex::Random_int(c, engine);
+            });
+
+        Benchmark(num_elements, p_permutations, p_testvect, "random " + std::to_string(c));
+    }
+
+    for (int c=1; c<=2048; c*=2) {
+        amrex::ParallelFor(num_elements,
+            [=] AMREX_GPU_DEVICE (int i) noexcept
+            {
+                p_permutations[i] = i/c;
+            });
+
+        Benchmark(num_elements, p_permutations, p_testvect, "conflict " + std::to_string(c));
+    }
+
+    for (int c=1; c<=65536; c*=2) {
+        amrex::ParallelFor(num_elements,
+            [=] AMREX_GPU_DEVICE (int i) noexcept
+            {
+                p_permutations[i] = i & ~(c-1);
+            });
+
+        Benchmark(num_elements, p_permutations, p_testvect, "conflict v2 " + std::to_string(c));
+    }
+
+    for (int c=32; c<=num_elements && c>0; c*=2) {
+        amrex::ParallelFor(num_elements,
+            [=] AMREX_GPU_DEVICE (int i) noexcept
+            {
+                p_permutations[i] = i % c;
+            });
+
+        Benchmark(num_elements, p_permutations, p_testvect, "compressed " + std::to_string(c));
+    }
+
+    for (int c=32; c<=num_elements/2 && c>0; c*=2) {
+        amrex::ParallelFor(num_elements,
+            [=] AMREX_GPU_DEVICE (int i) noexcept
+            {
+                p_permutations[i] = (i/2) % c;
+            });
+
+        Benchmark(num_elements, p_permutations, p_testvect, "compressed/2 " + std::to_string(c));
+    }
+
+    for (int c=32; c<=num_elements/4 && c>0; c*=2) {
+        amrex::ParallelFor(num_elements,
+            [=] AMREX_GPU_DEVICE (int i) noexcept
+            {
+                p_permutations[i] = (i/4) % c;
+            });
+
+        Benchmark(num_elements, p_permutations, p_testvect, "compressed/4 " + std::to_string(c));
+    }
+
+    for (int c=32; c<=num_elements/8 && c>0; c*=2) {
+        amrex::ParallelFor(num_elements,
+            [=] AMREX_GPU_DEVICE (int i) noexcept
+            {
+                p_permutations[i] = (i/8) % c;
+            });
+
+        Benchmark(num_elements, p_permutations, p_testvect, "compressed/8 " + std::to_string(c));
+    }
+
+    for (int c=1; c<=65536 && c>0; c*=2) {
+        amrex::ParallelForRNG(num_elements/c,
+            [=] AMREX_GPU_DEVICE (int i, const amrex::RandomEngine& engine) noexcept
+            {
+                const int start_index = amrex::Random_int(num_elements - c, engine);
+                for (int j=0; j<c; ++j) {
+                    p_permutations[i*c+j] = start_index;
+                }
+            });
+
+        Benchmark(num_elements, p_permutations, p_testvect, "random conflict " + std::to_string(c));
+    }
+
+    for (int c=1; c<=num_elements/16 && c>0; c*=2) {
+        amrex::ParallelForRNG(num_elements/c,
+            [=] AMREX_GPU_DEVICE (int i, const amrex::RandomEngine& engine) noexcept
+            {
+                const int start_index = amrex::Random_int(num_elements - c, engine);
+                for (int j=0; j<c; ++j) {
+                    p_permutations[i*c+j] = start_index+j;
+                }
+            });
+
+        Benchmark(num_elements, p_permutations, p_testvect, "random compressed " + std::to_string(c));
+    }
+
+    for (int c=16; c<=65536 && c>0; c*=2) {
+        amrex::ParallelFor(num_elements,
+            [=] AMREX_GPU_DEVICE (int i) noexcept
+            {
+                p_permutations[i] = (i % c) + 8200 * ( (i / c) % (num_elements/8200));
+            });
+
+        Benchmark(num_elements, p_permutations, p_testvect, "stride opt " + std::to_string(c));
+    }
+
+    for (int c=16; c<=65536 && c>0; c*=2) {
+        amrex::ParallelForRNG(num_elements/(8*c),
+            [=] AMREX_GPU_DEVICE (int i, const amrex::RandomEngine& engine) noexcept
+            {
+                const int start_index = amrex::Random_int(num_elements - 8200 * 8 - c, engine);
+                for (int k=0; k<8; ++k) {
+                    for (int j=0; j<c; ++j) {
+                        p_permutations[i*c*8+k*c+j] = start_index + j + k*8200;
+                    }
+                }
+            });
+
+        Benchmark(num_elements, p_permutations, p_testvect, "stride opt rand " + std::to_string(c));
+    }
+
+}
+
 void
 Hipace::Evolve ()
 {
