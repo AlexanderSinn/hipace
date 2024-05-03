@@ -10,6 +10,7 @@
 #include "HipaceProfilerWrapper.H"
 #include "Parser.H"
 
+#include <memory>
 
 std::size_t MultiBuffer::get_metadata_size () {
     // 0: buffer size
@@ -25,30 +26,40 @@ std::size_t* MultiBuffer::get_metadata_location (int slice) {
 
 void MultiBuffer::allocate_buffer (int slice) {
     AMREX_ALWAYS_ASSERT(m_datanodes[slice].m_location == memory_location::nowhere);
+    const std::size_t buffer_size_bytes = m_datanodes[slice].m_buffer_size * sizeof(storage_type);
+    std::size_t buffer_size_to_alloc = buffer_size_bytes + m_buffer_align - 1;
     if (!m_buffer_on_gpu) {
-        m_datanodes[slice].m_buffer = reinterpret_cast<char*>(amrex::The_Pinned_Arena()->alloc(
-            m_datanodes[slice].m_buffer_size * sizeof(storage_type)
+        m_datanodes[slice].m_unaligned_buffer = reinterpret_cast<char*>(amrex::The_Pinned_Arena()->alloc(
+            buffer_size_to_alloc
         ));
         m_datanodes[slice].m_location = memory_location::pinned;
     } else {
-        m_datanodes[slice].m_buffer = reinterpret_cast<char*>(amrex::The_Device_Arena()->alloc(
-            m_datanodes[slice].m_buffer_size * sizeof(storage_type)
+        m_datanodes[slice].m_unaligned_buffer = reinterpret_cast<char*>(amrex::The_Device_Arena()->alloc(
+            buffer_size_to_alloc
         ));
         m_datanodes[slice].m_location = memory_location::device;
     }
-    m_current_buffer_size += m_datanodes[slice].m_buffer_size * sizeof(storage_type);
+    m_current_buffer_size += buffer_size_to_alloc;
+    void* aligned_buffer = reinterpret_cast<void*>(m_datanodes[slice].m_unaligned_buffer);
+    aligned_buffer = std::align(m_buffer_align, buffer_size_bytes,
+                                aligned_buffer, buffer_size_to_alloc);
+    AMREX_ALWAYS_ASSERT(aligned_buffer && buffer_size_to_alloc >= buffer_size_bytes);
+    m_datanodes[slice].m_buffer = reinterpret_cast<char*>(aligned_buffer);
 }
 
 void MultiBuffer::free_buffer (int slice) {
     AMREX_ALWAYS_ASSERT(m_datanodes[slice].m_location != memory_location::nowhere);
+    const std::size_t buffer_size_bytes = m_datanodes[slice].m_buffer_size * sizeof(storage_type);
+    const std::size_t buffer_size_to_free = buffer_size_bytes + m_buffer_align - 1;
     if (m_datanodes[slice].m_location == memory_location::pinned) {
-        amrex::The_Pinned_Arena()->free(m_datanodes[slice].m_buffer);
+        amrex::The_Pinned_Arena()->free(m_datanodes[slice].m_unaligned_buffer);
     } else {
-        amrex::The_Device_Arena()->free(m_datanodes[slice].m_buffer);
+        amrex::The_Device_Arena()->free(m_datanodes[slice].m_unaligned_buffer);
     }
-    m_current_buffer_size -= m_datanodes[slice].m_buffer_size * sizeof(storage_type);
+    m_current_buffer_size -= buffer_size_to_free;
     m_datanodes[slice].m_location = memory_location::nowhere;
     m_datanodes[slice].m_buffer = nullptr;
+    m_datanodes[slice].m_unaligned_buffer = nullptr;
     m_datanodes[slice].m_buffer_size = 0;
 }
 
@@ -78,6 +89,7 @@ void MultiBuffer::initialize (int nslices, MultiBeam& beams, bool use_laser, amr
     queryWithParser(pp, "on_gpu", m_buffer_on_gpu);
     queryWithParser(pp, "max_leading_slices", m_max_leading_slices);
     queryWithParser(pp, "max_trailing_slices", m_max_trailing_slices);
+    queryWithParser(pp, "align_bytes", m_buffer_align);
 #ifdef AMREX_USE_GPU
     queryWithParser(pp, "async_memcpy", m_async_memcpy);
     if (m_buffer_on_gpu)

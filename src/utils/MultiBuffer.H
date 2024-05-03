@@ -73,6 +73,7 @@ private:
     // struct to store per-slice data
     struct DataNode {
         char* m_buffer = nullptr;
+        char* m_unaligned_buffer = nullptr;
         std::size_t m_buffer_size = 0;
         memory_location m_location = memory_location::nowhere;
         comm_progress m_progress = comm_progress::uninitialized;
@@ -122,6 +123,7 @@ private:
     int m_max_trailing_slices = std::numeric_limits<int>::max();
     std::size_t m_current_buffer_size = 0;
     std::size_t m_max_buffer_size = std::numeric_limits<std::size_t>::max();
+    amrex::Long m_buffer_align = 1;
 
     // parameters to send physical time
     amrex::Real m_time_send_buffer = 0.;
