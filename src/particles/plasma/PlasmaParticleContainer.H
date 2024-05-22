@@ -189,6 +189,7 @@ public:
     amrex::Gpu::DeviceVector<amrex::Real> m_adk_power;
     /** After how many slices the particles are reordered. 0: off */
     int m_reorder_period = 0;
+    int m_reorder_type = 0;
     /** 2D reordering index type. 0: cell, 1: node, 2: both */
     amrex::IntVect m_reorder_idx_type = {0, 0, 0};
     /** How often the insitu plasma diagnostics should be computed and written

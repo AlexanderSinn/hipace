@@ -484,7 +484,7 @@ Hipace::SolveOneSlice (int islice, int step)
 
     // prepare/initialize fields
     for (int lev=0; lev<current_N_level; ++lev) {
-        m_fields.InitializeSlices(lev, islice, m_3D_geom);
+        //m_fields.InitializeSlices(lev, islice, m_3D_geom);
     }
 
     // write laser aabs into fields MultiFab
@@ -501,8 +501,8 @@ Hipace::SolveOneSlice (int islice, int step)
                 m_deposit_rho || m_deposit_rho_individual, true, true, m_3D_geom, lev);
 
             // deposit jz_beam and maybe rhomjz of the beam on This slice
-            m_multi_beam.DepositCurrentSlice(m_fields, m_3D_geom, lev, step,
-                false, true, m_do_beam_jz_minus_rho, WhichSlice::This, WhichBeamSlice::This);
+            //m_multi_beam.DepositCurrentSlice(m_fields, m_3D_geom, lev, step,
+            //    false, true, m_do_beam_jz_minus_rho, WhichSlice::This, WhichBeamSlice::This);
         } else {
             // deposit jx jy jz (maybe chi) and rhomjz
             m_multi_plasma.DepositCurrent(m_fields, WhichSlice::This, true, true,
@@ -514,14 +514,14 @@ Hipace::SolveOneSlice (int islice, int step)
                 WhichSlice::This, WhichBeamSlice::This);
         }
         // add neutralizing background
-        m_fields.AddRhoIons(lev);
+        //m_fields.AddRhoIons(lev);
 
         // deposit grid current into jz_beam
         m_grid_current.DepositCurrentSlice(m_fields, m_3D_geom[lev], lev, islice);
     }
 
     // Psi ExmBy EypBx Ez Bz solve
-    m_fields.SolvePoissonPsiExmByEypBxEzBz(m_3D_geom, current_N_level);
+    //m_fields.SolvePoissonPsiExmByEypBxEzBz(m_3D_geom, current_N_level);
 
     // Advance laser slice by 1 step using chi
     // no MR for laser
@@ -544,17 +544,17 @@ Hipace::SolveOneSlice (int islice, int step)
             // it is implemented in the WAND-PIC quasistatic PIC code.
 
             // deposit jx_beam and jy_beam in the Next slice
-            m_multi_beam.DepositCurrentSlice(m_fields, m_3D_geom, lev, step,
-                m_do_beam_jx_jy_deposition, false, false, WhichSlice::Next, WhichBeamSlice::Next);
+            //m_multi_beam.DepositCurrentSlice(m_fields, m_3D_geom, lev, step,
+            //    m_do_beam_jx_jy_deposition, false, false, WhichSlice::Next, WhichBeamSlice::Next);
 
             // Set Sx and Sy to beam contribution
-            InitializeSxSyWithBeam(lev);
+            //InitializeSxSyWithBeam(lev);
 
             // Deposit Sx and Sy for every plasma species
             m_multi_plasma.ExplicitDeposition(m_fields, m_3D_geom, lev);
 
             // Solves Bx, By using Sx, Sy and chi
-            ExplicitMGSolveBxBy(lev, WhichSlice::This);
+            //ExplicitMGSolveBxBy(lev, WhichSlice::This);
         }
     } else {
         // Solves Bx and By in the current slice and modifies the force terms of the plasma particles
@@ -597,7 +597,7 @@ Hipace::SolveOneSlice (int islice, int step)
     m_adaptive_time_step.GatherMinAccSlice(m_multi_beam, m_3D_geom[0], m_fields);
 
     // Push beam particles
-    m_multi_beam.AdvanceBeamParticlesSlice(m_fields, m_3D_geom, islice, current_N_level);
+    //m_multi_beam.AdvanceBeamParticlesSlice(m_fields, m_3D_geom, islice, current_N_level);
 
     m_multi_beam.shiftSlippedParticles(islice, m_3D_geom[0]);
 
@@ -612,7 +612,7 @@ Hipace::SolveOneSlice (int islice, int step)
 
     // shift all levels
     for (int lev=0; lev<current_N_level; ++lev) {
-        m_fields.ShiftSlices(lev);
+        //m_fields.ShiftSlices(lev);
     }
 
     m_multi_beam.shiftBeamSlices();
