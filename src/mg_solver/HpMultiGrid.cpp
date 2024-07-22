@@ -324,8 +324,8 @@ void gsrb (int icolor, Box const& box, Array4<Real> const& phi,
         [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
         {
             if ((i+j+icolor)%2 == 0) {
-                gs1(i, j, 0, ilo, jlo, ihi, jhi, phi, rhs(i,j,0,0), acf(i,j,0), facx, facy);
-                gs1(i, j, 1, ilo, jlo, ihi, jhi, phi, rhs(i,j,0,1), acf(i,j,0), facx, facy);
+                gs1(i, j, 0, ilo, jlo, ihi, jhi, phi, rhs(i,j,0,0), acf(i,j,0,1), facx, facy);
+                gs1(i, j, 1, ilo, jlo, ihi, jhi, phi, rhs(i,j,0,1), acf(i,j,0,1), facx, facy);
             }
         });
     } else if (system_type == 2) {
@@ -350,9 +350,9 @@ void gsrb (int icolor, Box const& box, Array4<Real> const& phi,
 
 AMREX_GPU_DEVICE AMREX_FORCE_INLINE
 void transform_acf1 (int i, int j, int ilo, int jlo, int ihi, int jhi,
-    Real& acf, Real facx, Real facy)
+    Array4<Real> const& acf, Real facx, Real facy)
 {
-    Real c0 = -(acf+Real(2.)*(facx+facy));
+    Real c0 = -(acf(i,j,0,0)+Real(2.)*(facx+facy));
     if (i == ilo) {
         c0 -= Real(2.)*facx;
     } else if (i == ihi) {
@@ -363,7 +363,7 @@ void transform_acf1 (int i, int j, int ilo, int jlo, int ihi, int jhi,
     } else if (j == jhi) {
         c0 -= Real(2.)*facy;
     }
-    acf = Real(1.) / c0;
+    acf(i,j,0,1) = Real(1.) / c0;
 }
 
 #if defined(AMREX_USE_CUDA) || defined(AMREX_USE_HIP)
@@ -489,9 +489,9 @@ void gsrb_shared (Box const& box, Array4<Real> const& phi_out, Array4<Real const
                     jlo_loop <= j_loc && j_loc <= jhi_loop) {
                     if (system_type == 1) {
                         gs1<is_cell_centered>(i, j_loc, 0, ilo, jlo, ihi, jhi, phi_shared,
-                            rhs_loc[0], acf_loc[0], facx, facy);
+                            rhs_loc[0], acf_loc[1], facx, facy);
                         gs1<is_cell_centered>(i, j_loc, 1, ilo, jlo, ihi, jhi, phi_shared,
-                            rhs_loc[1], acf_loc[0], facx, facy);
+                            rhs_loc[1], acf_loc[1], facx, facy);
                     } else if (system_type == 2) {
                         gs2<is_cell_centered>(i, j_loc, ilo, jlo, ihi, jhi, phi_shared,
                             rhs_loc[0], rhs_loc[1], acf_loc[0], acf_loc[1], facx, facy);
@@ -1301,7 +1301,7 @@ MultiGrid::bottomsolve ()
                                       Array4<Real> const& phi, Array4<Real> const& rhs,
                                       Array4<Real> const& acf, Real facx, Real facy)
                 {
-                    Real a = acf(i,j,0);
+                    Real a = acf(i,j,0,1);
                     gs1(i, j, 0, ilo, jlo, ihi, jhi, phi, rhs(i,j,0,0), a, facx, facy);
                     gs1(i, j, 1, ilo, jlo, ihi, jhi, phi, rhs(i,j,0,1), a, facx, facy);
                 },
@@ -1340,7 +1340,7 @@ MultiGrid::bottomsolve ()
                                       Array4<Real> const& phi, Array4<Real> const& rhs,
                                       Array4<Real> const&, Real facx, Real facy)
                 {
-                    gs1(i, j, 0, ilo, jlo, ihi, jhi, phi, rhs(i,j,0,0), Real(0.), facx, facy);
+                    gs3(i, j, 0, ilo, jlo, ihi, jhi, phi, rhs(i,j,0,0), facx, facy);
                 },
                 [] AMREX_GPU_DEVICE (int i, int j, Array4<Real> const& res,
                                       int ilo, int jlo, int ihi, int jhi,
@@ -1470,10 +1470,10 @@ MultiGrid::average_down_acoef ()
             Real facx = Real(1.)/(dx*dx);
             Real facy = Real(1.)/(dy*dy);
             auto const& acf = m_acf[ilev].array();
-            hpmg::ParallelFor(m_domain[ilev], m_num_comps_acf,
-                [=] AMREX_GPU_DEVICE (int i, int j, int, int n) noexcept
+            hpmg::ParallelFor(valid_domain_box(m_domain[ilev]),
+                [=] AMREX_GPU_DEVICE (int i, int j, int) noexcept
                 {
-                    transform_acf1(i,j,ilo,jlo,ihi,jhi,acf(i,j,n),facx,facy);
+                    transform_acf1(i,j,ilo,jlo,ihi,jhi,acf,facx,facy);
                 });
         }
     }
