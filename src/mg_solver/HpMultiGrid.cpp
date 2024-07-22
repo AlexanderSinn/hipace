@@ -219,32 +219,24 @@ void compute_residual (Box const& box, Array4<Real> const& res,
 template<bool is_cell_centered = true>
 AMREX_GPU_DEVICE AMREX_FORCE_INLINE
 void gs1 (int i, int j, int n, int ilo, int jlo, int ihi, int jhi,
-          Array4<Real> const& phi, Real rhs, Real acf, Real facx, Real facy)
+          Array4<Real> const& phi, Real rhs, Real acf_transformed, Real facx, Real facy)
 {
     Real lap;
-    Real c0 = -(acf+Real(2.)*(facx+facy));
     if (is_cell_centered && i == ilo) {
         lap = facx * Real(4./3.)*phi(i+1,j,0,n);
-        c0 -= Real(2.)*facx;
     } else if (is_cell_centered && i == ihi) {
         lap = facx * Real(4./3.)*phi(i-1,j,0,n);
-        c0 -= Real(2.)*facx;
     } else {
         lap = facx * (phi(i-1,j,0,n) + phi(i+1,j,0,n));
     }
     if (is_cell_centered && j == jlo) {
         lap += facy * Real(4./3.)*phi(i,j+1,0,n);
-        c0 -= Real(2.)*facy;
     } else if (is_cell_centered && j == jhi) {
         lap += facy * Real(4./3.)*phi(i,j-1,0,n);
-        c0 -= Real(2.)*facy;
     } else {
         lap += facy * (phi(i,j-1,0,n) + phi(i,j+1,0,n));
     }
-    phi(i,j,0,n) = (rhs - lap) / c0;
-    // bit faster version with slightly different results:
-    // const Real c0_inv = Real(1.) / c0;
-    // phi(i,j,0,n) = (rhs - lap) * c0_inv;
+    phi(i,j,0,n) = (rhs - lap) * acf_transformed;
 }
 
 // is_cell_centered = true: supports both cell centered and node centered solves
@@ -354,6 +346,24 @@ void gsrb (int icolor, Box const& box, Array4<Real> const& phi,
             }
         });
     }
+}
+
+AMREX_GPU_DEVICE AMREX_FORCE_INLINE
+void transform_acf1 (int i, int j, int ilo, int jlo, int ihi, int jhi,
+    Real& acf, Real facx, Real facy)
+{
+    Real c0 = -(acf+Real(2.)*(facx+facy));
+    if (i == ilo) {
+        c0 -= Real(2.)*facx;
+    } else if (i == ihi) {
+        c0 -= Real(2.)*facx;
+    }
+    if (j == jlo) {
+        c0 -= Real(2.)*facy;
+    } else if (j == jhi) {
+        c0 -= Real(2.)*facy;
+    }
+    acf = Real(1.) / c0;
 }
 
 #if defined(AMREX_USE_CUDA) || defined(AMREX_USE_HIP)
@@ -1447,6 +1457,26 @@ MultiGrid::average_down_acoef ()
         }
     }
 #endif
+
+    if (m_system_type == 1) {
+        for (int ilev = 0; ilev < m_num_mg_levels; ++ilev) {
+            int const ilo = m_domain[ilev].smallEnd(0);
+            int const jlo = m_domain[ilev].smallEnd(1);
+            int const ihi = m_domain[ilev].bigEnd(0);
+            int const jhi = m_domain[ilev].bigEnd(1);
+            Real fac = static_cast<Real>(1 << ilev);
+            Real dx = m_dx * fac;
+            Real dy = m_dy * fac;
+            Real facx = Real(1.)/(dx*dx);
+            Real facy = Real(1.)/(dy*dy);
+            auto const& acf = m_acf[ilev].array();
+            hpmg::ParallelFor(m_domain[ilev], m_num_comps_acf,
+                [=] AMREX_GPU_DEVICE (int i, int j, int, int n) noexcept
+                {
+                    transform_acf1(i,j,ilo,jlo,ihi,jhi,acf(i,j,n),facx,facy);
+                });
+        }
+    }
 
 #if defined(AMREX_USE_CUDA)
     cudaStreamEndCapture(Gpu::gpuStream(), &m_cuda_graph_acf);
