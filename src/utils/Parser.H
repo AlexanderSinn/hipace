@@ -26,9 +26,63 @@
 #include <sstream>
 
 
+inline void
+getWithParser (const amrex::ParmParse& pp, char const * const str, amrex::RealVect& val) {
+    std::array<amrex::Real, 3> qarr;
+    pp.get(str, qarr);
+    for (int i=0; i<3; ++i) {
+        val[i] = qarr[i];
+    }
+}
+
+inline bool
+queryWithParser (const amrex::ParmParse& pp, char const * const str, amrex::RealVect& val) {
+    std::array<amrex::Real, 3> qarr;
+    for (int i=0; i<3; ++i) {
+        qarr[i] = val[i];
+    }
+    bool retval = pp.query(str, qarr);
+    for (int i=0; i<3; ++i) {
+        val[i] = qarr[i];
+    }
+    return retval;
+}
+
+template<class T>
+inline void
+getWithParser (const amrex::ParmParse& pp, char const * const str, std::vector<T>& val) {
+    pp.getarr(str, val);
+}
+
 template<class T>
 inline bool
-queryWithParser (const amrex::ParmParse& pp, char const * const str, T& val);
+queryWithParser (const amrex::ParmParse& pp, char const * const str, std::vector<T>& val) {
+    return pp.queryarr(str, val);
+}
+
+/** \brief fill val with the evaluated expression from the input file
+ *
+ * \param[in] pp ParmParse that is searched for the expression
+ * \param[in] str name of expression
+ * \param[out] val value to be filled, see fillWithParserArr and fillWithParser for supported types
+ */
+template<class T>
+inline auto
+getWithParser (const amrex::ParmParse& pp, char const * const str, T& val) -> decltype(pp.get(str, val)) {
+    return pp.get(str, val);
+}
+
+/** \brief return if input file contains the expression, if so it is parsed into val
+ *
+ * \param[in] pp ParmParse that is searched for the expression
+ * \param[in] str name of expression
+ * \param[out] val value to be filled, see fillWithParserArr and fillWithParser for supported types
+ */
+template<class T>
+inline auto
+queryWithParser (const amrex::ParmParse& pp, char const * const str, T& val) -> decltype(pp.query(str, val)) {
+    return pp.query(str, val);
+}
 
 namespace Parser
 {
@@ -44,6 +98,19 @@ namespace Parser
     /** \brief add Physical constants to Parser constants */
     inline void
     addConstantsToParser () {
+        amrex::ParmParse::SetParserPrefix("my_constants");
+        amrex::ParmParse pp{};
+        pp.add("pi",        MathConst::pi);
+        pp.add("true",      true);
+        pp.add("false",     false);
+        pp.add("clight",    PhysConstSI::c);
+        pp.add("epsilon0",  PhysConstSI::ep0);
+        pp.add("mu0",       PhysConstSI::mu0);
+        pp.add("q_e",       PhysConstSI::q_e);
+        pp.add("m_e",       PhysConstSI::m_e);
+        pp.add("m_p",       PhysConstSI::m_p);
+        pp.add("hbar",      PhysConstSI::hbar);
+        pp.add("r_e",       PhysConstSI::r_e);
         hipace_constants.insert({"clight",   PhysConstSI::c   });
         hipace_constants.insert({"epsilon0", PhysConstSI::ep0 });
         hipace_constants.insert({"mu0",      PhysConstSI::mu0 });
@@ -440,37 +507,6 @@ namespace Parser
             fillWithParser(str_arr[i], val_arr[i]);
         }
     }
-}
-
-/** \brief fill val with the evaluated expression from the input file
- *
- * \param[in] pp ParmParse that is searched for the expression
- * \param[in] str name of expression
- * \param[out] val value to be filled, see fillWithParserArr and fillWithParser for supported types
- */
-template<class T>
-inline void
-getWithParser (const amrex::ParmParse& pp, char const * const str, T& val) {
-    std::vector<std::string> f;
-    pp.getarr(str, f);
-    Parser::fillWithParserArr(f, val);
-}
-
-/** \brief return if input file contains the expression, if so it is parsed into val
- *
- * \param[in] pp ParmParse that is searched for the expression
- * \param[in] str name of expression
- * \param[out] val value to be filled, see fillWithParserArr and fillWithParser for supported types
- */
-template<class T>
-inline bool
-queryWithParser (const amrex::ParmParse& pp, char const * const str, T& val) {
-    std::vector<std::string> f;
-    const int is_specified = pp.queryarr(str, f);
-    if (is_specified) {
-        Parser::fillWithParserArr(f, val);
-    }
-    return is_specified;
 }
 
 /** \brief return if input file contains the expression, if so it is parsed into val.

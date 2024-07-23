@@ -227,6 +227,7 @@ BeamParticleContainer::InitData (const amrex::Geometry& geom)
         }
 
         getWithParser(pp, "num_particles", m_num_particles);
+        std::cout << "num_particles " << m_num_particles << std::endl;
         queryWithParser(pp, "radius", m_radius);
         queryWithParser(pp, "z_foc", m_z_foc);
         queryWithParser(pp, "do_symmetrize", m_do_symmetrize);
