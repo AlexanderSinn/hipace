@@ -16,6 +16,11 @@
 #   include <openPMD/auxiliary/Filesystem.hpp>
 #endif
 
+int
+WhichBeamSlice::Nused () {
+    return 2 + (Hipace::m_depos_order_z + 1) / 2;
+}
+
 namespace
 {
     void QueryElementSetChargeMass (amrex::ParmParse& pp, amrex::Real& charge, amrex::Real& mass)
@@ -407,10 +412,13 @@ void
 BeamParticleContainer::resize (int which_slice, int num_particles, int num_slipped_particles) {
     HIPACE_PROFILE("BeamParticleContainer::resize()");
 
-    m_num_particles_without_slipped[(which_slice + m_slice_permutation) % WhichBeamSlice::N] =
-        num_particles;
-    m_num_particles_with_slipped[(which_slice + m_slice_permutation) % WhichBeamSlice::N] =
-        num_particles + num_slipped_particles;
+    AMREX_ALWAYS_ASSERT(which_slice < WhichBeamSlice::Nused());
+    m_num_particles_without_slipped[
+        (which_slice + m_slice_permutation) % WhichBeamSlice::Nused()
+    ] = num_particles;
+    m_num_particles_with_slipped[
+        (which_slice + m_slice_permutation) % WhichBeamSlice::Nused()
+    ] =  num_particles + num_slipped_particles;
     getBeamSlice(which_slice).resize(num_particles + num_slipped_particles);
 }
 

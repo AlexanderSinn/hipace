@@ -19,7 +19,7 @@
 void
 AdvanceBeamParticlesSlice (
     BeamParticleContainer& beam, const Fields& fields, amrex::Vector<amrex::Geometry> const& gm,
-    const int slice, int const current_N_level)
+    const int slice, int const current_N_level, int beam_slice)
 {
     HIPACE_PROFILE("AdvanceBeamParticlesSlice()");
     using namespace amrex::literals;
@@ -85,7 +85,7 @@ AdvanceBeamParticlesSlice (
     const CheckDomainBounds lev2_bounds {gm[lev2_idx]};
 
     // Extract particle properties
-    const auto ptd = beam.getBeamSlice(WhichBeamSlice::This).getParticleTileData();
+    const auto ptd = beam.getBeamSlice(beam_slice).getParticleTileData();
 
     const auto enforceBC = EnforceBC();
 
@@ -94,7 +94,13 @@ AdvanceBeamParticlesSlice (
     const amrex::Real inv_clight_SI = 1.0_rt/PhysConstSI::c;
     const amrex::Real inv_c2 = 1.0_rt/(phys_const.c*phys_const.c);
     const amrex::Real charge_mass_ratio = beam.m_charge / beam.m_mass;
-    const amrex::Real min_z = gm[0].ProbLo(2) + (slice-gm[0].Domain().smallEnd(2))*gm[0].CellSize(2);
+
+    const amrex::Real z_offset = static_cast<amrex::Real>(Hipace::m_depos_order_z) / 2._rt;
+    const amrex::Real min_z = gm[0].ProbLo(2) +
+        (slice - gm[0].Domain().smallEnd(2) + z_offset) * gm[0].CellSize(2);
+    const amrex::Real max_z = gm[0].ProbLo(2) +
+        (1 + slice - gm[0].Domain().smallEnd(2) + z_offset) * gm[0].CellSize(2);
+
     bool use_external_fields = beam.m_use_external_fields;
     auto external_fields = beam.m_external_fields;
 
@@ -112,9 +118,6 @@ AdvanceBeamParticlesSlice (
     const amrex::Real E0 = Hipace::m_normalized_units ?
                            PhysConstSI::m_e * PhysConstSI::c / wp_inv / PhysConstSI::q_e : 1;
 
-    // don't include slipped particles in count as they were already pushed
-    Hipace::m_num_beam_particles_pushed += double(beam.getNumParticles(WhichBeamSlice::This));
-
     // Use OMP ParallelFor to use multiple threads when running on CPU
     omp::ParallelFor(
         amrex::TypeList<
@@ -124,14 +127,15 @@ AdvanceBeamParticlesSlice (
             Hipace::m_depos_order_xy,
             use_external_fields
         },
-        beam.getNumParticlesIncludingSlipped(WhichBeamSlice::This),
+        beam.getNumParticlesIncludingSlipped(beam_slice),
         [=] AMREX_GPU_DEVICE (int ip, auto depos_order, auto c_use_external_fields) {
 
-            if (!ptd.id(ip).is_valid()) return;
+            amrex::Real zp = ptd.pos(2, ip);
+
+            if (!ptd.id(ip).is_valid() || zp >= max_z) return;
 
             amrex::Real xp = ptd.pos(0, ip);
             amrex::Real yp = ptd.pos(1, ip);
-            amrex::Real zp = ptd.pos(2, ip);
             amrex::Real ux = ptd.rdata(BeamIdx::ux)[ip];
             amrex::Real uy = ptd.rdata(BeamIdx::uy)[ip];
             amrex::Real uz = ptd.rdata(BeamIdx::uz)[ip];

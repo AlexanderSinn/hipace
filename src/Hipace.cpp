@@ -704,9 +704,17 @@ Hipace::SolveOneSlice (int islice, int step)
     m_adaptive_time_step.GatherMinAccSlice(m_multi_beam, m_3D_geom[0], m_fields);
 
     // Push beam particles
-    m_multi_beam.AdvanceBeamParticlesSlice(m_fields, m_3D_geom, islice, current_N_level);
+    if (m_depos_order_z % 2 == 0) {
+        m_multi_beam.AdvanceBeamParticlesSlice(m_fields, m_3D_geom, islice, current_N_level,
+            {WhichBeamSlice::Nused()-1});
+    } else {
+        m_multi_beam.AdvanceBeamParticlesSlice(m_fields, m_3D_geom, islice, current_N_level,
+            {WhichBeamSlice::Nused()-2, WhichBeamSlice::Nused()-1});
+    }
 
-    m_multi_beam.shiftSlippedParticles(islice, m_3D_geom[0]);
+    // Shift beam particles
+    m_multi_beam.shiftSlippedParticles(islice, m_3D_geom[0],
+        WhichBeamSlice::Nused()-1, WhichBeamSlice::Nused()-2);
 
     // collisions for plasmas and beams
     doCoulombCollision();
@@ -715,7 +723,8 @@ Hipace::SolveOneSlice (int islice, int step)
     m_adaptive_time_step.GatherMinUzSlice(m_multi_beam, false);
 
     bool is_last_step = (step == m_max_step) || (m_physical_time == m_max_time);
-    m_multi_buffer.put_data(islice, m_multi_beam, m_multi_laser, WhichBeamSlice::This, is_last_step);
+    m_multi_buffer.put_data(islice, m_multi_beam, m_multi_laser,
+        WhichBeamSlice::Nused()-1, is_last_step);
 
     // shift all levels
     for (int lev=0; lev<current_N_level; ++lev) {

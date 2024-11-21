@@ -19,8 +19,11 @@
  * \param[in] beam Beam particle container
  * \param[in] slice longitudinal slice
  * \param[in] geom Geometry
+ * \param[in] beam_slice_src source beam slice
+ * \param[in] beam_slice_dst destination beam slice
  */
 void
-shiftSlippedParticles (BeamParticleContainer& beam, const int slice, amrex::Geometry const& geom);
+shiftSlippedParticles (BeamParticleContainer& beam, const int slice, amrex::Geometry const& geom,
+    const int beam_slice_src, const int beam_slice_dst);
 
 #endif // HIPACE_SLICESORT_H_

@@ -41,7 +41,9 @@ struct BeamIdx
 };
 
 struct WhichBeamSlice {
-    enum beam_slice : int { Next=0, This, N };
+    enum beam_slice : int { Next=0, This, Previous1, Previous2, N};
+
+    static int Nused ();
 };
 
 using BeamTile = amrex::ParticleTile<
@@ -160,24 +162,36 @@ public:
     std::string get_name () const {return m_name;}
 
     void shiftBeamSlices () {
-        m_slice_permutation = (m_slice_permutation + 1) % WhichBeamSlice::N;
+        m_slice_permutation = (m_slice_permutation + 1) % WhichBeamSlice::Nused();
         resize(WhichBeamSlice::Next, 0, 0);
     }
 
     BeamTile& getBeamSlice (int which_slice) {
-        return m_slices[(which_slice + m_slice_permutation) % WhichBeamSlice::N];
+        AMREX_ALWAYS_ASSERT(which_slice < WhichBeamSlice::Nused());
+        return m_slices[
+            (which_slice + m_slice_permutation) % WhichBeamSlice::Nused()
+        ];
     }
 
     const BeamTile& getBeamSlice (int which_slice) const {
-        return m_slices[(which_slice + m_slice_permutation) % WhichBeamSlice::N];
+        AMREX_ALWAYS_ASSERT(which_slice < WhichBeamSlice::Nused());
+        return m_slices[
+            (which_slice + m_slice_permutation) % WhichBeamSlice::Nused()
+        ];
     }
 
     int getNumParticles (int which_slice) const {
-        return m_num_particles_without_slipped[(which_slice + m_slice_permutation) % WhichBeamSlice::N];
+        AMREX_ALWAYS_ASSERT(which_slice < WhichBeamSlice::Nused());
+        return m_num_particles_without_slipped[
+            (which_slice + m_slice_permutation) % WhichBeamSlice::Nused()
+        ];
     }
 
     int getNumParticlesIncludingSlipped (int which_slice) const {
-        return m_num_particles_with_slipped[(which_slice + m_slice_permutation) % WhichBeamSlice::N];
+        AMREX_ALWAYS_ASSERT(which_slice < WhichBeamSlice::Nused());
+        return m_num_particles_with_slipped[
+            (which_slice + m_slice_permutation) % WhichBeamSlice::Nused()
+        ];
     }
 
     void resize (int which_slice, int num_particles, int num_slipped_particles);

@@ -59,20 +59,29 @@ MultiBeam::DepositCurrentSlice (
 }
 
 void
-MultiBeam::shiftSlippedParticles (const int slice, amrex::Geometry const& geom)
+MultiBeam::shiftSlippedParticles (const int slice, amrex::Geometry const& geom,
+    const int beam_slice_src, const int beam_slice_dst)
 {
     for (int i=0; i<m_nbeams; i++) {
-        ::shiftSlippedParticles(m_all_beams[i], slice, geom);
+        ::shiftSlippedParticles(m_all_beams[i], slice, geom, beam_slice_src, beam_slice_dst);
     }
 }
 
 void
 MultiBeam::AdvanceBeamParticlesSlice (
     const Fields& fields, amrex::Vector<amrex::Geometry> const& gm, const int slice,
-    int const current_N_level)
+    int const current_N_level, amrex::Vector<int> const& beam_slices)
 {
     for (int i=0; i<m_nbeams; i++) {
-        ::AdvanceBeamParticlesSlice(m_all_beams[i], fields, gm, slice, current_N_level);
+
+        // don't include slipped particles in count as they were already pushed
+        Hipace::m_num_beam_particles_pushed +=
+            double(m_all_beams[i].getNumParticles(WhichBeamSlice::This));
+
+        for (int beam_slice : beam_slices) {
+            ::AdvanceBeamParticlesSlice(m_all_beams[i], fields, gm, slice,
+                                        current_N_level, beam_slice);
+        }
     }
 }
 
