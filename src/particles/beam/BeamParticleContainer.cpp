@@ -99,14 +99,12 @@ BeamParticleContainer::ReadParameters ()
     }
 
     getBeamInitSlice().define(
-        m_initialize_on_cpu ? amrex::The_Pinned_Arena() : amrex::The_Arena(),
         BeamIdx::real_nattribs_in_buffer,
         BeamIdx::int_nattribs_in_buffer
     );
 
     for (auto& beam_tile : m_slices) {
         beam_tile.define(
-            amrex::The_Arena(),
             BeamIdx::real_nattribs + (m_do_spin_tracking ? 3 : 0),
             BeamIdx::int_nattribs
         );
@@ -434,7 +432,7 @@ BeamParticleContainer::ReorderParticles (int beam_slice, int step, amrex::Geomet
         {
             amrex::Gpu::AsyncVector<uint64_t> tmp_idcpu(np_total);
 
-            auto src = ptile.GetIdCPUData().data();
+            auto src = ptile.GetStructOfArrays().GetIdCPUData().data();
             uint64_t* dst = tmp_idcpu.data();
             amrex::ParallelFor(np_total,
                 [=] AMREX_GPU_DEVICE (int i) {
@@ -450,7 +448,7 @@ BeamParticleContainer::ReorderParticles (int beam_slice, int step, amrex::Geomet
             amrex::Gpu::AsyncVector<amrex::Real> tmp_real(np_total);
 
             for (int comp = 0; comp < ptile.NumRealComps(); ++comp) {
-                auto src = ptile.GetRealData(comp).data();
+                auto src = ptile.GetStructOfArrays().GetRealData(comp).data();
                 amrex::ParticleReal* dst = tmp_real.data();
                 amrex::ParallelFor(np_total,
                     [=] AMREX_GPU_DEVICE (int i) {
@@ -467,7 +465,7 @@ BeamParticleContainer::ReorderParticles (int beam_slice, int step, amrex::Geomet
             amrex::Gpu::AsyncVector<int> tmp_int(np_total);
 
             for (int comp = 0; comp < ptile.NumIntComps(); ++comp) {
-                auto src = ptile.GetIntData(comp).data();
+                auto src = ptile.GetStructOfArrays().GetIntData(comp).data();
                 int* dst = tmp_int.data();
                 amrex::ParallelFor(np_total,
                     [=] AMREX_GPU_DEVICE (int i) {

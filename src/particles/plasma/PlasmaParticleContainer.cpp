@@ -179,8 +179,6 @@ PlasmaParticleContainer::ReadParameters ()
 void
 PlasmaParticleContainer::InitData (const amrex::Geometry& geom)
 {
-    SetArena(amrex::The_Arena());
-
     for (int j = 0; j < PlasmaIdx::real_nattribs; ++j) {
         AddRealComp();
     }
