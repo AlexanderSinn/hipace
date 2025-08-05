@@ -84,14 +84,16 @@ ExplicitDeposition (PlasmaParticleContainer& plasma, Fields& fields,
                         int(pti.numParticles()), is_valid, get_cell, deposit, isl_fab.array(),
                         isl_fab.box(), pti.GetParticleTile().getParticleTileData(),
                         amrex::GpuArray<int, 5>{Bz, Ez, ExmBy, EypBx, aabs_comp},
-                        amrex::GpuArray<int, 2>{Sy, Sx});
+                        amrex::GpuArray<int, 2>{Sy, Sx},
+                        "ExplicitDeposition()");
                 } else {
                     constexpr int stencil_size = depos_order + derivative_type + 1;
                     SharedMemoryDeposition<stencil_size, stencil_size, false>(
                         int(pti.numParticles()), is_valid, get_cell, deposit, isl_fab.array(),
                         isl_fab.box(), pti.GetParticleTile().getParticleTileData(),
                         amrex::GpuArray<int, 4>{Bz, Ez, ExmBy, EypBx},
-                        amrex::GpuArray<int, 2>{Sy, Sx});
+                        amrex::GpuArray<int, 2>{Sy, Sx},
+                        "ExplicitDeposition()");
                 }
             },
             // is_valid

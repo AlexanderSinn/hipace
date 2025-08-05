@@ -135,7 +135,8 @@ DepositTemperature (PlasmaParticleContainer& plasma,
             isl_fab.array(),
             isl_fab.box(), pti.GetParticleTile().getParticleTileData(),
             amrex::GpuArray<int, 1>{aabs},
-            amrex::GpuArray<int, 7>{w, ux, uy, uz, uxsq, uysq, uzsq}
+            amrex::GpuArray<int, 7>{w, ux, uy, uz, uxsq, uysq, uzsq},
+            "TemperatureDeposition_PlasmaParticleContainer()"
         );
         Array3<amrex::Real> field_arr = isl_fab.array();
 

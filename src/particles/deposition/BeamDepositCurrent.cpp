@@ -101,7 +101,8 @@ DepositCurrentSlice (BeamParticleContainer& beam, Fields& fields,
                 isl_fab.array(), isl_fab.box(),
                 beam.getBeamSlice(which_beam_slice).getParticleTileData(),
                 amrex::GpuArray<int, 0>{},
-                amrex::GpuArray<int, 4>{jxb_cmp, jyb_cmp, jzb_cmp, rhomjzb_cmp});
+                amrex::GpuArray<int, 4>{jxb_cmp, jyb_cmp, jzb_cmp, rhomjzb_cmp},
+                "DepositCurrentSlice_BeamParticleContainer()");
         },
         // is_valid
         // return whether the particle is valid and should deposit

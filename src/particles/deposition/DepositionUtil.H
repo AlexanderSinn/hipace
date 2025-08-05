@@ -46,7 +46,8 @@ SharedMemoryDeposition (int num_particles,
                         F1&& is_valid, F2&& get_start_cell, F3&& do_deposit,
                         Array3<amrex::Real> field, amrex::Box box, const PTD& ptd,
                         amrex::GpuArray<int, max_cache> idx_cache,
-                        amrex::GpuArray<int, max_depos> idx_depos) {
+                        amrex::GpuArray<int, max_depos> idx_depos,
+                        std::string name) {
 #ifdef AMREX_USE_GPU
     if (Hipace::m_do_shared_depos) {
         constexpr int threads_per_tile = 256;
@@ -54,11 +55,8 @@ SharedMemoryDeposition (int num_particles,
         constexpr int tile_y = 16;
         constexpr int tile_s_x = tile_x + stencil_x - 1;
         constexpr int tile_s_y = tile_y + stencil_y - 1;
-        constexpr int combine_threads = 4;
-        constexpr int combine_stride = threads_per_tile / combine_threads;
 
         static_assert(tile_x * tile_y == threads_per_tile);
-        static_assert(threads_per_tile % combine_threads == 0);
 
         const int lo_x = box.smallEnd(0);
         const int lo_y = box.smallEnd(1);
@@ -68,11 +66,12 @@ SharedMemoryDeposition (int num_particles,
         const int ntile_y = (box.length(1) + tile_y - 1) / tile_y;
         constexpr int ll_guard = std::numeric_limits<int>::max();
         amrex::Gpu::DeviceVector<int> ll_start(ntile_x * ntile_y * threads_per_tile, ll_guard);
-        amrex::Gpu::DeviceVector<int> ll_count(ntile_x * ntile_y * combine_stride, 0);
         amrex::Gpu::DeviceVector<int> ll_next(num_particles);
         int * const p_ll_start = ll_start.dataPtr();
-        int * const p_ll_count = ll_count.dataPtr();
         int * const p_ll_next = ll_next.dataPtr();
+
+        {
+            HIPACE_PROFILE("SharedMemoryDeposition::MakeList::" + name);
 
         // build linked lists to assign particles to tiles and cells within those tiles
         amrex::ParallelFor(num_particles,
@@ -91,20 +90,19 @@ SharedMemoryDeposition (int num_particles,
                     const int loc_id_y = (cell_y - lo_y - tile_id_y * tile_y);
                     const int loc_id = loc_id_x + loc_id_y * tile_x;
 
-                    // combine_threads cells share the same count.
-                    // The count modulo combine_threads is used to
-                    // load balance particles between these cells.
-                    const int count = amrex::Gpu::Atomic::Add(
-                        p_ll_count + idx*combine_stride + (loc_id % combine_stride), 1);
-
                     // prepend particle id to the inked list
                     p_ll_next[ip] = amrex::Gpu::Atomic::Exch(
-                        p_ll_start + idx*threads_per_tile + (loc_id % combine_stride)
-                                   + (count % combine_threads) * combine_stride , ip);
+                        p_ll_start + idx*threads_per_tile + loc_id, ip);
                 }
             });
 
+        }
+
         amrex::Math::FastDivmodU64 num_tiles_divmod {static_cast<std::uint64_t>(ntile_x)};
+
+
+        {
+            HIPACE_PROFILE("SharedMemoryDeposition::DoDeposit::" + name);
 
         // launch shared memory kernel to deposit the charge / current
         // use one block per tile and one thread per cell
@@ -112,8 +110,15 @@ SharedMemoryDeposition (int num_particles,
             [=] AMREX_GPU_DEVICE () {
                 // allocate static shared memory
                 __shared__ amrex::Real shared_ptr[tile_s_x * tile_s_y * (max_cache + max_depos)];
+                __shared__ int llstart_shared[threads_per_tile];
 
                 const int tile_id = blockIdx.x;
+
+                llstart_shared[threadIdx.x] = p_ll_start[tile_id * threads_per_tile + threadIdx.x];
+
+                if (__syncthreads_and(llstart_shared[threadIdx.x] == ll_guard)) {
+                    return;
+                }
 
                 std::uint64_t remainder = 0;
                 const int tile_id_y = num_tiles_divmod.divmod(remainder, tile_id);
@@ -169,10 +174,72 @@ SharedMemoryDeposition (int num_particles,
                 __syncthreads();
 
                 // deposit the charge / current of all particles in the linked list
-                int current_idx = p_ll_start[tile_id * threads_per_tile + threadIdx.x];
-                while (current_idx != ll_guard) {
-                    do_deposit(current_idx, ptd, shared_arr, loc_idx_cache, loc_idx_depos);
-                    current_idx = p_ll_next[current_idx];
+                // int current_idx = p_ll_start[tile_id * threads_per_tile + threadIdx.x];
+                // while (current_idx != ll_guard) {
+                //     do_deposit(current_idx, ptd, shared_arr, loc_idx_cache, loc_idx_depos);
+                //     current_idx = p_ll_next[current_idx];
+                // }
+
+                // deposit the charge / current of all particles in the linked list
+
+                // for (int s = 0; s < threads_per_tile; s += 32) {
+
+                //     int tid = (s + threadIdx.x) % threads_per_tile;
+
+                //     int * const addr = &llstart_shared[tid];
+                //     int current_idx = amrex::Gpu::Atomic::Add(addr, 0);
+
+                //     while (current_idx != ll_guard) {
+
+                //         int next_idx = p_ll_next[current_idx];
+
+                //         int cas_idx = amrex::Gpu::Atomic::CAS(
+                //             addr,
+                //             current_idx,
+                //             next_idx
+                //         );
+
+                //         if (cas_idx == current_idx) {
+                //             do_deposit(current_idx, ptd, shared_arr, loc_idx_cache, loc_idx_depos);
+                //             current_idx = next_idx;
+                //         } else {
+                //             current_idx = cas_idx;
+                //         }
+                //     }
+                // }
+
+                for (int s = 0; s < threads_per_tile; s += 32) {
+
+                    int tid = (s + threadIdx.x) % threads_per_tile;
+
+                    int * const addr = &llstart_shared[tid];
+                    int current_idx = amrex::Gpu::Atomic::Add(addr, 0);
+
+                    while (current_idx != ll_guard) {
+
+                        int cas_idx = current_idx;
+                        int next_idx = 0;
+
+                        do {
+                            current_idx = cas_idx;
+
+                            next_idx = p_ll_next[current_idx];
+
+                            cas_idx = amrex::Gpu::Atomic::CAS(
+                                addr,
+                                current_idx,
+                                next_idx
+                            );
+                        } while (cas_idx != current_idx && cas_idx != ll_guard);
+
+                        if (current_idx == ll_guard) {
+                            break;
+                        }
+
+                        do_deposit(current_idx, ptd, shared_arr, loc_idx_cache, loc_idx_depos);
+
+                        current_idx = next_idx;
+                    }
                 }
 
                 __syncthreads();
@@ -196,6 +263,8 @@ SharedMemoryDeposition (int num_particles,
 
             }
         );
+
+        }
 
         // streamSynchronize to safely deallocate the particle linked lists
         amrex::Gpu::streamSynchronize();
@@ -254,6 +323,8 @@ SharedMemoryDeposition (int num_particles,
     }
 #endif
     else {
+        HIPACE_PROFILE("SharedMemoryDeposition::SimpleDeposit::" + name);
+
         // simple loop over particles, on CPU this only uses one thread
         amrex::ParallelFor(num_particles,
             [=] AMREX_GPU_DEVICE (int ip) {
