@@ -510,15 +510,10 @@ Fields::Copy (const int current_N_level, const int i_slice, FieldDiagnosticData&
     auto laser_func = interpolated_field_xy<depos_order_xy,
         guarded_field_xy>{{laser_mf}, multi_laser.GetLaserGeom()};
 
-#ifdef AMREX_USE_GPU
     // This async copy happens on the same stream as the ParallelFor below, which uses the copied array.
     // Therefore, it is safe to do it async.
     amrex::Gpu::htod_memcpy_async(m_rel_z_vec.dataPtr(), m_rel_z_vec_cpu.dataPtr(),
                                   m_rel_z_vec_cpu.size() * sizeof(amrex::Real));
-#else
-    std::memcpy(m_rel_z_vec.dataPtr(), m_rel_z_vec_cpu.dataPtr(),
-                m_rel_z_vec_cpu.size() * sizeof(amrex::Real));
-#endif
 
     // Finally actual kernel: Interpolation in x, y, z of zero-extended fields
     for (amrex::MFIter mfi(slice_mf, DfltMfi); mfi.isValid(); ++mfi) {
