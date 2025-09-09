@@ -162,6 +162,9 @@ General parameters
     If a parameter is present multiple times then the last occurrence will be used.
     Note that this will include some default AMReX parameters.
 
+* ``hipace.initial_time`` (`float`) optional (default `0.`)
+    Initial time of the simulation. Can be used to start at a chosen location in a custom density profile or to overwrite the initial time set e.g. with the ``from_file`` option of beam initialization.
+
 * ``hipace.grid_external_fields(x,y,z,t)`` (5 `float`) optional (default `0. 0. 0. 0. 0.`)
     External fields applied to the field grid as a function of x, y, z and t.
     This will affect both beam and plasma particles, as well as the field diagnostics.
@@ -1117,7 +1120,7 @@ For the field in-situ diagnostics, the following quantities are calculated per s
 These quantities can be used to calculate the energy stored in the fields.
 
 For the laser in-situ diagnostics, the following quantities are calculated per slice and stored:
-``max(|a|^2), [|a|^2], [|a|^2*x], [|a|^2*x*x], [|a|^2*y], [|a|^2*y*y], axis(a)``.
+``max(|a|^2), [|a|^2], [|a|^2*x], [|a|^2*x*x], [|a|^2*y], [|a|^2*y*y], axis(a), [chi*d_z|a|^2]``.
 Thereby, ``max(|a|^2)`` is the highest value of ``|a|^2`` in the current slice
 and ``axis(a)`` gives the complex value of the laser envelope, in the center of every slice.
 
