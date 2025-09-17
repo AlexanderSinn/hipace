@@ -1175,8 +1175,11 @@ Fields::EnforcePeriodic (const bool do_sum, std::vector<int>&& comp_idx)
         }
         if (i+1 >= comp_idx.size() || comp_idx[i+1] > scomp+ncomp) {
             if (do_sum) {
+                // std::cout << "SumBoundary scomp " << scomp << " ncomp " << ncomp << " m_slices_nguards " << m_slices_nguards << std::endl;
+                HIPACE_PROFILE("Fields::SB_EnforcePeriodic()");
                 mfab.SumBoundary(scomp, ncomp, m_slices_nguards, m_lev0_periodicity);
             } else {
+                HIPACE_PROFILE("Fields::FB_EnforcePeriodic()");
                 mfab.FillBoundary(scomp, ncomp, m_slices_nguards, m_lev0_periodicity);
             }
             ncomp = 0;
