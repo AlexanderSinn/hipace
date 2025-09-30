@@ -8,6 +8,7 @@
  */
 #include "Fields.H"
 #include "fft_poisson_solver/FFTPoissonSolverPeriodic.H"
+#include "fft_poisson_solver/FFTPoissonSolverDirichletAMReX.H"
 #include "fft_poisson_solver/FFTPoissonSolverDirichletDirect.H"
 #include "fft_poisson_solver/FFTPoissonSolverDirichletExpanded.H"
 #include "fft_poisson_solver/FFTPoissonSolverDirichletFast.H"
@@ -226,6 +227,11 @@ Fields::AllocData (
             new MGPoissonSolverDirichlet(getSlices(lev).boxArray(),
                                          getSlices(lev).DistributionMap(),
                                          geom))  );
+    } else if (m_poisson_solver_str == "FFTDirichletAMReX") {
+        m_poisson_solver.push_back(std::unique_ptr<FFTPoissonSolverDirichletAMReX>(
+            new FFTPoissonSolverDirichletAMReX(getSlices(lev).boxArray(),
+                                               getSlices(lev).DistributionMap(),
+                                               Hipace::GetInstance().m_slice_geom[0])) );
     } else {
         amrex::Abort("Unknown poisson solver '" + m_poisson_solver_str +
             "', must be 'FFTDirichletDirect', 'FFTDirichletExpanded', 'FFTDirichletFast', " +
