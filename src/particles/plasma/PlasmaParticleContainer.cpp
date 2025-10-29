@@ -92,22 +92,26 @@ PlasmaParticleContainer::ReadParameters ()
     }
     queryWithParser(pp, "ionization_product", m_product_name);
 
-    std::string density_func_str = "0.";
     DeprecatedInput(m_name, "density", "density(x,y,z)");
     DeprecatedInput(m_name, "parabolic_curvature", "density(x,y,z)",
                     "The same functionality can be obtained with the parser using "
                     "density(x,y,z) = <density> * (1 + <parabolic_curvature>*(x^2 + y^2) )" );
 
+    std::string density_func_str = "0.";
     bool density_func_specified = queryWithParserAlt(pp, "density(x,y,z)", density_func_str, pp_alt);
-    m_density_func = makeFunctionWithParser<3>(density_func_str, m_parser, {"x", "y", "z"});
+    if (density_func_specified) {
+        m_density_func.define_parser(
+            makeFunctionWithParser<3>(density_func_str, m_parser, {"x", "y", "z"}));
+    }
 
-    queryWithParserAlt(pp, "min_density", m_min_density, pp_alt);
+    std::string density_path = "";
+    bool density_file_specified = queryWithParserAlt(pp, "read_density_from_path", density_path, pp_alt);
+    if (density_file_specified) {
+        m_density_func.define_from_file(density_path, m_f_density_data, m_d_density_data);
+    }
 
     std::string density_table_file_name{};
     m_use_density_table = queryWithParser(pp, "density_table_file", density_table_file_name);
-    AMREX_ALWAYS_ASSERT_WITH_MESSAGE(!(density_func_specified && m_use_density_table),
-                                     "Can only use one plasma density from either 'density(x,y,z)'"
-                                     " or 'desity_table_file', not both");
     if (m_use_density_table) {
         std::ifstream file(density_table_file_name);
         AMREX_ALWAYS_ASSERT_WITH_MESSAGE(file.is_open(), "Unable to open 'density_table_file'");
@@ -123,7 +127,12 @@ PlasmaParticleContainer::ReadParameters ()
         AMREX_ALWAYS_ASSERT_WITH_MESSAGE(!m_density_table.empty(),
                                          "Unable to get any data out of 'density_table_file'");
     }
+    AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
+        (int(density_func_specified) + int(density_file_specified) + int(m_use_density_table)) == 1,
+        "Plasma: Must specify exactly one of either 'density(x,y,z)', "
+        "'read_density_from_path' or 'density_table_file'");
 
+    queryWithParserAlt(pp, "min_density", m_min_density, pp_alt);
     queryWithParserAlt(pp, "radius", m_radius, pp_alt);
     queryWithParserAlt(pp, "hollow_core_radius", m_hollow_core_radius, pp_alt);
     queryWithParserAlt(pp, "insitu_radius", m_insitu_radius, pp_alt);
@@ -155,7 +164,13 @@ PlasmaParticleContainer::ReadParameters ()
     queryWithParserAlt(pp, "reorder_idx_type", idx_array, pp_alt);
     m_reorder_idx_type = amrex::IntVect(idx_array[0], idx_array[1], 0);
     queryWithParserAlt(pp, "insitu_period", m_insitu_period, pp_alt);
-    queryWithParserAlt(pp, "insitu_file_prefix", m_insitu_file_prefix, pp_alt);
+    m_insitu_file_prefix = Hipace::m_output_folder + "/insitu";
+    const bool set_file_prefix =
+        queryWithParserAlt(pp, "insitu_file_prefix", m_insitu_file_prefix, pp_alt);
+    if (set_file_prefix) {
+        amrex::Print() <<
+            "It is recommended to use hipace.output_folder instead of plasmas.insitu_file_prefix\n";
+    }
     queryWithParserAlt(pp, "prevent_centered_particle", m_prevent_centered_particle, pp_alt);
     queryWithParserAlt(pp, "do_push", m_do_push, pp_alt);
 }
@@ -297,7 +312,8 @@ PlasmaParticleContainer::UpdateDensityFunction (const amrex::Real pos_z)
     if (!m_use_density_table) return;
     auto iter = m_density_table.lower_bound(pos_z);
     if (iter == m_density_table.end()) --iter;
-    m_density_func = makeFunctionWithParser<3>(iter->second, m_parser, {"x", "y", "z"});
+    m_density_func.define_parser(
+        makeFunctionWithParser<3>(iter->second, m_parser, {"x", "y", "z"}));
 }
 
 void
@@ -930,6 +946,8 @@ PlasmaParticleContainer::InSituWriteToFile (int step, amrex::Real time, const am
 {
     HIPACE_PROFILE("PlasmaParticleContainer::InSituWriteToFile()");
 
+    using namespace amrex::literals;
+
 #ifdef HIPACE_USE_OPENPMD
     // Create subdirectory
     openPMD::auxiliary::create_directories(m_insitu_file_prefix);
@@ -944,7 +962,8 @@ PlasmaParticleContainer::InSituWriteToFile (int step, amrex::Real time, const am
     std::ofstream ofs{m_insitu_file_prefix + "/reduced_" + m_name + "." + pad_rank_num + ".txt",
         std::ofstream::out | std::ofstream::app | std::ofstream::binary};
 
-    const amrex::Real sum_w0 = m_insitu_sum_rdata[0];
+    const amrex::Real sum_w0_inv = m_insitu_sum_rdata[0] <= 0._rt ?
+        0._rt : 1._rt / m_insitu_sum_rdata[0];
     const std::size_t nslices = static_cast<std::size_t>(m_nslices);
     const amrex::Real normalized_density_factor = Hipace::m_normalized_units ?
         geom.CellSizeArray().product() : 1; // dx * dy * dz in normalized units, 1 otherwise
@@ -978,18 +997,18 @@ PlasmaParticleContainer::InSituWriteToFile (int step, amrex::Real time, const am
         {"sum(w)"  , &m_insitu_rdata[0], nslices},
         {"Np"      , &m_insitu_idata[0], nslices},
         {"average" , {
-            {"[x]"   , &(m_insitu_sum_rdata[ 1] /= sum_w0)},
-            {"[x^2]" , &(m_insitu_sum_rdata[ 2] /= sum_w0)},
-            {"[y]"   , &(m_insitu_sum_rdata[ 3] /= sum_w0)},
-            {"[y^2]" , &(m_insitu_sum_rdata[ 4] /= sum_w0)},
-            {"[ux]"  , &(m_insitu_sum_rdata[ 5] /= sum_w0)},
-            {"[ux^2]", &(m_insitu_sum_rdata[ 6] /= sum_w0)},
-            {"[uy]"  , &(m_insitu_sum_rdata[ 7] /= sum_w0)},
-            {"[uy^2]", &(m_insitu_sum_rdata[ 8] /= sum_w0)},
-            {"[uz]"  , &(m_insitu_sum_rdata[ 9] /= sum_w0)},
-            {"[uz^2]", &(m_insitu_sum_rdata[10] /= sum_w0)},
-            {"[ga]"  , &(m_insitu_sum_rdata[11] /= sum_w0)},
-            {"[ga^2]", &(m_insitu_sum_rdata[12] /= sum_w0)}
+            {"[x]"   , &(m_insitu_sum_rdata[ 1] *= sum_w0_inv)},
+            {"[x^2]" , &(m_insitu_sum_rdata[ 2] *= sum_w0_inv)},
+            {"[y]"   , &(m_insitu_sum_rdata[ 3] *= sum_w0_inv)},
+            {"[y^2]" , &(m_insitu_sum_rdata[ 4] *= sum_w0_inv)},
+            {"[ux]"  , &(m_insitu_sum_rdata[ 5] *= sum_w0_inv)},
+            {"[ux^2]", &(m_insitu_sum_rdata[ 6] *= sum_w0_inv)},
+            {"[uy]"  , &(m_insitu_sum_rdata[ 7] *= sum_w0_inv)},
+            {"[uy^2]", &(m_insitu_sum_rdata[ 8] *= sum_w0_inv)},
+            {"[uz]"  , &(m_insitu_sum_rdata[ 9] *= sum_w0_inv)},
+            {"[uz^2]", &(m_insitu_sum_rdata[10] *= sum_w0_inv)},
+            {"[ga]"  , &(m_insitu_sum_rdata[11] *= sum_w0_inv)},
+            {"[ga^2]", &(m_insitu_sum_rdata[12] *= sum_w0_inv)}
         }},
         {"total"   , {
             {"sum(w)", &m_insitu_sum_rdata[0]},

@@ -581,7 +581,7 @@ which are valid only for certain beam types, are introduced further below under
 
 * ``<beam name>.injection_type`` (`string`)
     The injection type for the particle beam. Currently available are ``fixed_weight_pdf``, ``fixed_weight``, ``fixed_ppc``,
-    and ``from_file``.
+    ``from_file`` and ``from_list``.
     ``fixed_weight_pdf`` generates a beam with a fixed number of particles with a constant weight where
     the transverse profile is Gaussian and the longitudinal profile is arbitrary according to a
     user-specified probability density function. It is more general and faster, and uses
@@ -590,6 +590,7 @@ which are valid only for certain beam types, are introduced further below under
     ``fixed_ppc`` generates a beam with a fixed number of particles per cell and
     varying weights. It can be either a Gaussian or a flattop beam.
     ``from_file`` reads a beam from openPMD files.
+    ``from_list`` reads a beam from arrays provided directly in the input script.
 
 * ``<beam name>.element`` (`string`) optional (default `electron`)
     The Physical Element of the plasma. Sets charge, mass and, if available,
@@ -856,6 +857,27 @@ Option: ``from_file``
     Whether to initialize the beam on the CPU instead of the GPU.
     Initializing the beam on the CPU can be much slower but is necessary if the full beam does not fit into GPU memory.
 
+Option: ``from_list``
+^^^^^^^^^^^^^^^^^^^^^
+
+* ``<beam name>.num_particles`` (`int`)
+    Number of particles to generate the beam. If this is equal to zero,
+    then the other parameters can be omitted.
+
+* ``<beam name>.init_pos_x``, ``<beam name>.init_pos_y`` and ``<beam name>.init_pos_z`` (`float`)
+    List of initial x-, y- and z-positions for all beam particles.
+
+* ``<beam name>.init_ux``, ``<beam name>.init_uy`` and ``<beam name>.init_uz`` (`float`)
+    List of initial normalized momentum (:math:`= \gamma \beta = \frac{p}{m c}`)
+    in x, y and z for all beam particles.
+
+* ``<beam name>.init_weight`` (`float`)
+    List of macro-particle weight for all beam particles.
+    A value of one corresponds to one physical particle.
+
+* ``<beam name>.init_sx``, ``<beam name>.init_sy`` and ``<beam name>.init_sz`` (`float`)
+    If spin-tracking is enabled, list of initial x-, y- and z-spin for all beam particles.
+
 SALAME algorithm
 ^^^^^^^^^^^^^^^^
 
@@ -1021,7 +1043,11 @@ in-situ diagnostics allow for fast analysis of large beams or the plasma particl
     Output period for standard beam and field diagnostics. Field or beam specific diagnostics can overwrite this parameter.
     No output is given for ``diagnostic.output_period = 0``.
 
-* ``hipace.file_prefix`` (`string`) optional (default `diags/hdf5/`)
+* ``hipace.output_folder`` (`string`) optional (default ``"diags"``)
+    Set the output path of diagnostic data. By default all types of diagnostics will output
+    into subfolders of this folder.
+
+* ``hipace.file_prefix`` (`string`) optional (default ``"<hipace.output_folder>/hdf5/"``)
     Path of the output.
 
 * ``hipace.openpmd_backend`` (`string`) optional (default `h5`)
@@ -1161,7 +1187,7 @@ Use ``hipace/tools/read_insitu_diagnostics.py`` to read the files using this for
 * ``<beam name> or beams.insitu_period`` (`int`) optional (default ``0``)
     Period of the beam in-situ diagnostics. `0` means no beam in-situ diagnostics.
 
-* ``<beam name> or beams.insitu_file_prefix`` (`string`) optional (default ``"diags/insitu"``)
+* ``<beam name> or beams.insitu_file_prefix`` (`string`) optional (default ``"<hipace.output_folder>/insitu"``)
     Path of the beam in-situ output. Must not be the same as `hipace.file_prefix`.
 
 * ``<beam name> or beams.insitu_radius`` (`float`) optional (default ``infinity``)
@@ -1171,7 +1197,7 @@ Use ``hipace/tools/read_insitu_diagnostics.py`` to read the files using this for
 * ``<plasma name> or plasmas.insitu_period`` (`int`) optional (default ``0``)
     Period of the plasma in-situ diagnostics. `0` means no plasma in-situ diagnostics.
 
-* ``<plasma name> or plasmas.insitu_file_prefix`` (`string`) optional (default ``"plasma_diags/insitu"``)
+* ``<plasma name> or plasmas.insitu_file_prefix`` (`string`) optional (default ``"<hipace.output_folder>/insitu"``)
     Path of the plasma in-situ output. Must not be the same as `hipace.file_prefix`.
 
 * ``<plasma name> or plasmas.insitu_radius`` (`float`) optional (default ``infinity``)
@@ -1181,13 +1207,13 @@ Use ``hipace/tools/read_insitu_diagnostics.py`` to read the files using this for
 * ``fields.insitu_period`` (`int`) optional (default ``0``)
     Period of the field in-situ diagnostics. `0` means no field in-situ diagnostics.
 
-* ``fields.insitu_file_prefix`` (`string`) optional (default ``"diags/field_insitu"``)
+* ``fields.insitu_file_prefix`` (`string`) optional (default ``"<hipace.output_folder>/insitu"``)
     Path of the field in-situ output. Must not be the same as `hipace.file_prefix`.
 
 * ``lasers.insitu_period`` (`int`) optional (default ``0``)
     Period of the laser in-situ diagnostics. `0` means no laser in-situ diagnostics.
 
-* ``lasers.insitu_file_prefix`` (`string`) optional (default ``"diags/laser_insitu"``)
+* ``lasers.insitu_file_prefix`` (`string`) optional (default ``"<hipace.output_folder>/insitu"``)
     Path of the laser in-situ output. Must not be the same as `hipace.file_prefix`.
 
 Additional physics
