@@ -150,8 +150,8 @@ BeamParticleContainer::InitData (const amrex::Geometry& geom)
             queryWithParser(pp, "zmin", m_zmin);
             queryWithParser(pp, "zmax", m_zmax);
             AMREX_ALWAYS_ASSERT_WITH_MESSAGE( !m_do_salame ||
-                (m_zmin != -std::numeric_limits<amrex::Real>::max() &&
-                 m_zmax !=  std::numeric_limits<amrex::Real>::max()),
+                (m_zmin != -amrex::Real::max() &&
+                 m_zmax !=  amrex::Real::max()),
                 "For the SALAME algorithm it is mandatory to either use a 'can' profile or "
                 "'zmin' and 'zmax' with a gaussian profile");
         } else {
@@ -565,7 +565,7 @@ BeamParticleContainer::InSituComputeDiags (int islice)
     for (int i=0; i<m_insitu_nrp; ++i) {
         m_insitu_rdata[islice + i * m_nslices] = real_arr[i] *
             // sum(w) is not multiplied by sum_w_inv
-            ( i == 0 ? 1 : sum_w_inv );
+            ( i == 0 ? 1._rt : sum_w_inv );
         m_insitu_sum_rdata[i] += real_arr[i];
     }
 
@@ -638,7 +638,7 @@ BeamParticleContainer::InSituWriteToFile (int step, amrex::Real time, const amre
         0._rt : 1._rt / m_insitu_sum_rdata[0];
     const std::size_t nslices = static_cast<std::size_t>(m_nslices);
     const amrex::Real normalized_density_factor = Hipace::m_normalized_units ?
-        geom.CellSizeArray().product() : 1; // dx * dy * dz in normalized units, 1 otherwise
+        geom.CellSizeArray().product() : 1._rt; // dx * dy * dz in normalized units, 1 otherwise
     const int is_normalized_units = Hipace::m_normalized_units;
 
     // specify the structure of the data later available in python

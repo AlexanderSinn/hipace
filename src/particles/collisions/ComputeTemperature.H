@@ -27,8 +27,8 @@ T_R ComputeTemperature (
     for (int i = Is; i < (int) Ie; ++i)
     {
         // particle's Lorentz factor
-        gm = is_beam_coll ? std::sqrt( 1._rt + (ux[I[i]]*ux[I[i]] + uy[I[i]]*uy[I[i]]
-                                                + psi[I[i]]*psi[I[i]])*inv_c2 )
+        gm = is_beam_coll ? amrex::Real(std::sqrt( 1._rt + (ux[I[i]]*ux[I[i]] + uy[I[i]]*uy[I[i]]
+                                                + psi[I[i]]*psi[I[i]])*inv_c2 ))
                           : (1.0_rt + (ux[I[i]]*ux[I[i]] + uy[I[i]]*uy[I[i]])*inv_c2
                                        + psi[I[i]]*psi[I[i]]) / (2.0_rt * psi[I[i]] );
         const amrex::Real uz = is_beam_coll ? psi[I[i]] : clight * (gm - psi[I[i]]);

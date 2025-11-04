@@ -117,7 +117,7 @@ AdvanceBeamParticlesSlice (
                                      ( static_cast<double>(background_density_SI) *
                                      PhysConstSI::q_e*PhysConstSI::q_e )  ) : 1;
     const amrex::Real E0 = Hipace::m_normalized_units && radiation_reaction ?
-                           PhysConstSI::m_e * PhysConstSI::c / wp_inv / PhysConstSI::q_e : 1;
+                           PhysConstSI::m_e * PhysConstSI::c / wp_inv / PhysConstSI::q_e : 1._rt;
 
     // don't include slipped particles in count as they were already pushed
     Hipace::m_num_beam_particles_pushed += double(beam.getNumParticles(WhichBeamSlice::This));

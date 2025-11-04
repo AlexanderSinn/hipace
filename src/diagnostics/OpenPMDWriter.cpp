@@ -137,7 +137,7 @@ OpenPMDWriter::WriteBeamDiagnostics (
     amrex::Vector<amrex::Geometry> const& geom3D)
 {
     openPMD::Iteration iteration = m_outputSeries->iterations[output_step];
-    iteration.setTime(physical_time);
+    iteration.setTime(static_cast<double>(physical_time));
 
     WriteBeamParticleData(a_multi_beam, iteration, geom3D[0], beamnames);
 }
@@ -148,7 +148,7 @@ OpenPMDWriter::WriteFieldDiagnostics (
     const MultiLaser& a_multi_laser, const amrex::Real physical_time, const int output_step)
 {
     openPMD::Iteration iteration = m_outputSeries->iterations[output_step];
-    iteration.setTime(physical_time);
+    iteration.setTime(static_cast<double>(physical_time));
 
     for (const auto& fd : field_diag) {
         if (fd.m_has_field) {
@@ -210,8 +210,8 @@ OpenPMDWriter::WriteFieldData (
         field.setGridGlobalOffset(offWindow);
 
         openPMD::Datatype datatype = is_laser_comp ?
-            openPMD::determineDatatype< std::complex<amrex::Real> >() :
-            openPMD::determineDatatype< amrex::Real >();
+            openPMD::determineDatatype< std::complex<double> >() :
+            openPMD::determineDatatype< double >();
         // set data type and global size of the simulation
         openPMD::Dataset dataset(datatype, global_size);
         field_comp.resetDataset(dataset);
@@ -220,14 +220,16 @@ OpenPMDWriter::WriteFieldData (
             // set laser attributes and store laser
             field.setAttribute("envelopeField", "normalized_vector_potential");
             field.setAttribute("angularFrequency",
-                double(2.) * MathConst::pi * PhysConstSI::c / a_multi_laser.GetLambda0());
+                static_cast<double>(double(2.) * MathConst::pi * PhysConstSI::c / a_multi_laser.GetLambda0()));
             std::vector< std::complex<double> > polarization {{1., 0.}, {0., 0.}};
             field.setAttribute("polarization", polarization);
             field_comp.storeChunkRaw(
                 reinterpret_cast<const std::complex<amrex::Real>*>(fd.m_F_laser.dataPtr()),
                 chunk_offset, chunk_size);
         } else {
-            field_comp.storeChunkRaw(fd.m_F.dataPtr(icomp), chunk_offset, chunk_size);
+            field_comp.storeChunkRaw(
+                reinterpret_cast<const double*>(fd.m_F.dataPtr(icomp)),
+                chunk_offset, chunk_size);
         }
     }
 }
@@ -337,7 +339,9 @@ OpenPMDWriter::WriteBeamParticleData (MultiBeam& beams, openPMD::Iteration& iter
             auto& currRecord = beam_species[record_name];
             auto& currRecordComp = currRecord[component_name];
             // not read until the data is flushed
-            currRecordComp.storeChunkRaw(m_real_beam_data[ibeam][idx].data(), {0ull}, {np_total});
+            currRecordComp.storeChunkRaw(
+                reinterpret_cast<const double*>(m_real_beam_data[ibeam][idx].data()),
+                {0ull}, {np_total});
         }
     }
 }
@@ -411,7 +415,7 @@ OpenPMDWriter::SetupPos (openPMD::ParticleSpecies& currSpecies, BeamParticleCont
                          const unsigned long long& np, const amrex::Geometry& geom)
 {
     const PhysConst phys_const_SI = make_constants_SI();
-    auto const realType = openPMD::Dataset(openPMD::determineDatatype<amrex::ParticleReal>(), {np});
+    auto const realType = openPMD::Dataset(openPMD::determineDatatype<double>(), {np});
     auto const idType = openPMD::Dataset(openPMD::determineDatatype< uint64_t >(), {np});
 
     std::vector< std::string > const positionComponents{"x", "y", "z"};
@@ -423,9 +427,9 @@ OpenPMDWriter::SetupPos (openPMD::ParticleSpecies& currSpecies, BeamParticleCont
     auto const scalar = openPMD::RecordComponent::SCALAR;
     currSpecies["id"][scalar].resetDataset( idType );
     currSpecies["charge"][scalar].resetDataset( realType );
-    currSpecies["charge"][scalar].makeConstant( beam.m_charge );
+    currSpecies["charge"][scalar].makeConstant( static_cast<double>(beam.m_charge) );
     currSpecies["mass"][scalar].resetDataset( realType );
-    currSpecies["mass"][scalar].makeConstant( beam.m_mass );
+    currSpecies["mass"][scalar].makeConstant( static_cast<double>(beam.m_mass) );
 
     // meta data
     currSpecies["positionOffset"].setUnitDimension( utils::getUnitDimension("positionOffset") );
@@ -481,7 +485,7 @@ OpenPMDWriter::SetupRealProperties (openPMD::ParticleSpecies& currSpecies,
                                     const amrex::Vector<std::string>& real_comp_names,
                                     const unsigned long long np)
 {
-    auto particlesLineup = openPMD::Dataset(openPMD::determineDatatype<amrex::ParticleReal>(),{np});
+    auto particlesLineup = openPMD::Dataset(openPMD::determineDatatype<double>(),{np});
 
     /* we have 7 or 10 SoA real attributes: x, y, z, weight, ux, uy, uz, (sx, sy, sz) */
     int const NumSoARealAttributes = real_comp_names.size();

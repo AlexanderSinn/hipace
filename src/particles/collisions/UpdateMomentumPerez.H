@@ -127,8 +127,10 @@ void UpdateMomentumPerezElastic (
     // Compute s according to eq (17) from Perez et al., Phys.Plasmas.19.083104 (2012)
     const double tts = static_cast<double>(m1)*g1s*m2*g2s/(inv_c2_SI*p1sm*p1sm) + T_R(1.0);
     const double tts2 = tts*tts;
-    const double charge_fac = normalized_units ? static_cast<double>(PhysConstSI::q_e)*PhysConstSI::q_e*
-                                                    PhysConstSI::q_e*PhysConstSI::q_e : 1;
+    const double charge_fac = normalized_units ? static_cast<double>(PhysConstSI::q_e)*
+                                                 static_cast<double>(PhysConstSI::q_e)*
+                                                 static_cast<double>(PhysConstSI::q_e)*
+                                                 static_cast<double>(PhysConstSI::q_e) : 1.;
     T_R s = static_cast<double>(n1)*n2/n12 * dt*lnLmd*q1*q1*q2*q2*charge_fac * inv_c2_SI*inv_c2_SI /
           ( static_cast<double>(4.0) * MathConst::pi * PhysConstSI::ep0 * PhysConstSI::ep0 *
             m1*g1*m2*g2 ) * gc*p1sm/mass_g * tts2;

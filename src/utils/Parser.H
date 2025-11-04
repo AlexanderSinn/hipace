@@ -97,6 +97,12 @@ namespace Parser
     }
 
     inline void
+    fillWithParser (const amrex::ParmParse& pp, std::string const& str, amrex::MockReal& val) {
+        amrex::Parser parser = pp.makeParser(str, {});
+        val.val = parser.compileHost<0>()();
+    }
+
+    inline void
     fillWithParser (const amrex::ParmParse& pp, std::string const& str, float& val) {
         amrex::Parser parser = pp.makeParser(str, {});
         double v = parser.compileHost<0>()();

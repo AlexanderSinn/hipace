@@ -107,7 +107,7 @@ namespace
         ptd.rdata(BeamIdx::ux )[ip] = uxp;
         ptd.rdata(BeamIdx::uy )[ip] = uyp;
         ptd.rdata(BeamIdx::uz )[ip] = uz * speed_of_light;
-        ptd.rdata(BeamIdx::w  )[ip] = is_valid ? std::abs(weight) : amrex::Real{0};
+        ptd.rdata(BeamIdx::w  )[ip] = is_valid ? amrex::Real(std::abs(weight)) : amrex::Real{0};
 
         ptd.idata(BeamIdx::nsubcycles)[ip] = 0;
         ptd.idata(BeamIdx::mr_level)[ip] = 0;
@@ -141,8 +141,8 @@ InitBeamFixedPPC3D ()
     const amrex::Real y_mean = m_position_mean[1];
     const amrex::Real z_min = m_zmin;
     const amrex::Real z_max = m_zmax;
-    const amrex::Real radius_sq = m_radius == std::numeric_limits<amrex::Real>::max() ?
-        std::numeric_limits<amrex::Real>::max() : m_radius * m_radius;
+    const amrex::Real radius_sq = m_radius == amrex::Real::max() ?
+        amrex::Real::max() : m_radius * m_radius;
     const amrex::Real min_density = m_min_density;
     const amrex::GpuArray<int, 3> rand_ppc {m_random_ppc[0], m_random_ppc[1], m_random_ppc[2]};
 
@@ -219,14 +219,14 @@ InitBeamFixedPPCSlice (const int islice, const int which_beam_slice)
     const int num_ppc = ppc[0] * ppc[1] * ppc[2];
 
     const amrex::Real scale_fac = Hipace::m_normalized_units ?
-        1./num_ppc : dx[0]*dx[1]*dx[2]/num_ppc;
+        amrex::Real(1)/num_ppc : dx[0]*dx[1]*dx[2]/num_ppc;
 
     const amrex::Real x_mean = m_position_mean[0];
     const amrex::Real y_mean = m_position_mean[1];
     const amrex::Real z_min = m_zmin;
     const amrex::Real z_max = m_zmax;
-    const amrex::Real radius_sq = m_radius == std::numeric_limits<amrex::Real>::max() ?
-        std::numeric_limits<amrex::Real>::max() : m_radius * m_radius;
+    const amrex::Real radius_sq = m_radius == amrex::Real::max() ?
+        amrex::Real::max() : m_radius * m_radius;
     const amrex::Real min_density = m_min_density;
     const amrex::GpuArray<int, 3> rand_ppc {m_random_ppc[0], m_random_ppc[1], m_random_ppc[2]};
 
@@ -426,8 +426,8 @@ InitBeamFixedWeightSlice (int slice, int which_slice)
     const amrex::Real z_mean = can ? 0.5_rt * (z_min + z_max) : m_pos_mean_z;
     const amrex::RealVect pos_std = m_position_std;
     const amrex::Real z_foc = m_z_foc;
-    const amrex::Real radius_sq = m_radius == std::numeric_limits<amrex::Real>::max() ?
-        std::numeric_limits<amrex::Real>::max() : m_radius * m_radius;
+    const amrex::Real radius_sq = m_radius == amrex::Real::max() ?
+        amrex::Real::max() : m_radius * m_radius;
     auto pos_mean_x = m_pos_mean_x_func;
     auto pos_mean_y = m_pos_mean_y_func;
     const amrex::Real weight = m_total_charge / (m_num_particles * m_charge);
@@ -622,8 +622,8 @@ InitBeamFixedWeightPDFSlice (int slice, int which_slice)
         const bool do_symmetrize = m_do_symmetrize;
         const bool peak_density_is_specified = m_peak_density_is_specified;
         const amrex::Real z_foc = m_z_foc;
-        const amrex::Real radius_sq = m_radius == std::numeric_limits<amrex::Real>::max() ?
-            std::numeric_limits<amrex::Real>::max() : m_radius * m_radius;
+        const amrex::Real radius_sq = m_radius == amrex::Real::max() ?
+            amrex::Real::max() : m_radius * m_radius;
         const amrex::Real weight = m_total_weight / m_num_particles;
         const auto pos_func = m_pdf_pos_func;
         const auto u_func = m_pdf_u_func;
@@ -766,9 +766,9 @@ InitBeamFromList3D ()
             AddOneBeamParticle(ptd,
                 p_x[i], p_y[i], p_z[i],
                 p_ux[i], p_uy[i], p_uz[i],
-                do_spin_tracking ? p_sx[i] : 0.,
-                do_spin_tracking ? p_sy[i] : 0.,
-                do_spin_tracking ? p_sz[i] : 0.,
+                do_spin_tracking ? p_sx[i] : 0._rt,
+                do_spin_tracking ? p_sy[i] : 0._rt,
+                do_spin_tracking ? p_sz[i] : 0._rt,
                 p_w[i],
                 pid, i, clight, enforceBC, do_spin_tracking);
         });
@@ -1209,9 +1209,9 @@ InitBeamFromFile (const std::string input_file,
                 static_cast<amrex::Real>(u_x_ptr[i] * unit_ux), // = gamma * beta
                 static_cast<amrex::Real>(u_y_ptr[i] * unit_uy),
                 static_cast<amrex::Real>(u_z_ptr[i] * unit_uz),
-                do_spin_tracking ? static_cast<amrex::Real>(s_x_ptr[i]) : 0.,
-                do_spin_tracking ? static_cast<amrex::Real>(s_y_ptr[i]) : 0.,
-                do_spin_tracking ? static_cast<amrex::Real>(s_z_ptr[i]) : 0.,
+                do_spin_tracking ? static_cast<amrex::Real>(s_x_ptr[i]) : amrex::Real(0),
+                do_spin_tracking ? static_cast<amrex::Real>(s_y_ptr[i]) : amrex::Real(0),
+                do_spin_tracking ? static_cast<amrex::Real>(s_z_ptr[i]) : amrex::Real(0),
                 static_cast<amrex::Real>(w_w_ptr[i] * unit_ww),
                 pid, i, phys_const.c, enforceBC, do_spin_tracking);
         });

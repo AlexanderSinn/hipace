@@ -52,8 +52,8 @@ InitParticles (const amrex::RealVect& a_u_std,
     amrex::Array<amrex::Real, n_lev> scale_fac_lev {};
     for (int lev = 0; lev < n_lev; ++lev) {
         const int num_ppc = ppc_lev[lev][0] * ppc_lev[lev][1];
-        scale_fac_lev[lev] = num_ppc <= 0 ? 0. :
-            (Hipace::m_normalized_units ? 1./num_ppc : dx[0]*dx[1]*dx[2]/num_ppc);
+        scale_fac_lev[lev] = num_ppc <= 0 ? 0._rt :
+            (Hipace::m_normalized_units ? 1._rt/num_ppc : dx[0]*dx[1]*dx[2]/num_ppc);
     }
 
     amrex::IntVect box_nodal{amrex::IndexType::CELL,amrex::IndexType::CELL,amrex::IndexType::CELL};
@@ -79,7 +79,7 @@ InitParticles (const amrex::RealVect& a_u_std,
     {
         amrex::Box tile_box  = mfi.tilebox(box_nodal, box_grow);
 
-        if (a_radius != std::numeric_limits<amrex::Real>::max()) {
+        if (a_radius != amrex::Real::max()) {
             amrex::IntVect lo_limit {
                 static_cast<int>(std::round((-a_radius - plo[0])/dx[0] - 2)),
                 static_cast<int>(std::round((-a_radius - plo[1])/dx[1] - 2)),
@@ -93,8 +93,8 @@ InitParticles (const amrex::RealVect& a_u_std,
             tile_box &= amrex::Box(lo_limit, hi_limit, box_nodal);
         }
 
-        const amrex::Real radius_sq = a_radius == std::numeric_limits<amrex::Real>::max() ?
-            std::numeric_limits<amrex::Real>::max() : a_radius * a_radius;
+        const amrex::Real radius_sq = a_radius == amrex::Real::max() ?
+            amrex::Real::max() : a_radius * a_radius;
 
         const auto lo = amrex::lbound(tile_box);
         const auto hi = amrex::ubound(tile_box);

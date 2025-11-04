@@ -141,7 +141,7 @@ AdaptiveTimeStep::GatherMinUzSlice (MultiBeam& beams, const bool initial)
             [=] AMREX_GPU_DEVICE (unsigned long long ip) noexcept -> ReduceTuple
             {
                 if (amrex::ConstParticleIDWrapper(idcpup[ip]) < 0) return {
-                    0._rt, 0._rt, 0._rt, std::numeric_limits<amrex::Real>::max()
+                    0._rt, 0._rt, 0._rt, amrex::Real::max()
                 };
                 return {
                     wp[ip],
@@ -183,7 +183,7 @@ AdaptiveTimeStep::CalculateFromMinUz (
     amrex::Vector<amrex::Real> new_dts;
     new_dts.resize(nbeams);
     amrex::Vector<amrex::Real> beams_min_uz_mq;
-    beams_min_uz_mq.resize(nbeams, std::numeric_limits<amrex::Real>::max());
+    beams_min_uz_mq.resize(nbeams, amrex::Real::max());
 
     for (int ibeam = 0; ibeam < nbeams; ibeam++) {
         new_dts[ibeam] = dt;

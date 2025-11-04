@@ -407,7 +407,7 @@ IonizationModule (const int lev,
                                          PhysConstSI::q_e*PhysConstSI::q_e /
                                          (PhysConstSI::ep0 * PhysConstSI::m_e) );
         const amrex::Real E0 = Hipace::m_normalized_units ?
-                               wp * PhysConstSI::m_e * PhysConstSI::c / PhysConstSI::q_e : 1;
+                               wp * PhysConstSI::m_e * PhysConstSI::c / PhysConstSI::q_e : 1._rt;
 
         int * const ion_lev = soa_ion.GetIntData(PlasmaIdx::ion_lev).data();
         const amrex::Real * const x_prev = soa_ion.GetRealData(PlasmaIdx::x_prev).data();
@@ -604,7 +604,7 @@ LaserIonization (const int islice,
                                          PhysConstSI::q_e*PhysConstSI::q_e /
                                          (PhysConstSI::ep0 * PhysConstSI::m_e) );
         const amrex::Real E0 = Hipace::m_normalized_units ?
-                               wp * PhysConstSI::m_e * PhysConstSI::c / PhysConstSI::q_e : 1;
+                               wp * PhysConstSI::m_e * PhysConstSI::c / PhysConstSI::q_e : 1._rt;
         const amrex::Real lambda0 = laser.GetLambda0();
         const amrex::Real omega0 = 2.0 * MathConst::pi * phys_const.c / lambda0;
         const bool linear_polarization = laser.LinearPolarization();
@@ -656,9 +656,9 @@ LaserIonization (const int islice,
             if (amrex::ConstParticleIDWrapper(idcpup[ip]) < 0 ||
                 !laser_bounds.contains(xp, yp)) return;
 
-            Complex A = 0;
-            Complex A_dx = 0;
-            Complex A_dzeta = 0;
+            Complex A = 0._rt;
+            Complex A_dx = 0._rt;
+            Complex A_dzeta = 0._rt;
 
             doLaserGatherShapeN<depos_order_xy>(xp, yp, A, A_dx, A_dzeta, laser_arr,
                 dx_inv, dy_inv, dzeta_inv, x_pos_offset, y_pos_offset);
@@ -682,7 +682,7 @@ LaserIonization (const int islice,
                 std::exp( adk_exp_prefactor[ion_lev_loc]/Ep );
 
             amrex::Real const w_dtau_ac = w_dtau_dc *
-                (linear_polarization ? std::sqrt(Ep * laser_adk_prefactor[ion_lev_loc]) : 1._rt);
+                (linear_polarization ? std::sqrt(Ep * laser_adk_prefactor[ion_lev_loc]) : 1.);
 
             amrex::Real p = 1._rt - std::exp( - w_dtau_ac );
 
@@ -747,9 +747,9 @@ LaserIonization (const int islice,
                 if (amrex::ConstParticleIDWrapper(idcpup[ip]) < 0 ||
                     !laser_bounds.contains(xp, yp)) return;
 
-                Complex A = 0;
-                Complex A_dx = 0;
-                Complex A_dzeta = 0;
+                Complex A = 0._rt;
+                Complex A_dx = 0._rt;
+                Complex A_dzeta = 0._rt;
 
                 doLaserGatherShapeN<depos_order_xy>(xp, yp, A, A_dx, A_dzeta, laser_arr,
                     dx_inv, dy_inv, dzeta_inv, x_pos_offset, y_pos_offset);
@@ -928,7 +928,7 @@ PlasmaParticleContainer::InSituComputeDiags (int islice)
         for (int i=0; i<m_insitu_nrp; ++i) {
             m_insitu_rdata[islice + i * m_nslices] = real_arr[i] *
                 // sum(w) and [(ga-1)*(1-vz)] are not multiplied by sum_w_inv
-                ( i == 0 || i == (m_insitu_nrp-1) ? 1 : sum_w_inv );
+                ( i == 0 || i == (m_insitu_nrp-1) ? 1._rt : sum_w_inv );
             m_insitu_sum_rdata[i] += real_arr[i];
         }
 
@@ -966,7 +966,7 @@ PlasmaParticleContainer::InSituWriteToFile (int step, amrex::Real time, const am
         0._rt : 1._rt / m_insitu_sum_rdata[0];
     const std::size_t nslices = static_cast<std::size_t>(m_nslices);
     const amrex::Real normalized_density_factor = Hipace::m_normalized_units ?
-        geom.CellSizeArray().product() : 1; // dx * dy * dz in normalized units, 1 otherwise
+        geom.CellSizeArray().product() : 1._rt; // dx * dy * dz in normalized units, 1 otherwise
     const int is_normalized_units = Hipace::m_normalized_units;
 
     // Specify the structure of the data later available in python

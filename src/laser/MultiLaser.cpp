@@ -172,9 +172,9 @@ MultiLaser::InitData ()
             "Must choose a different field insitu file prefix compared to the full diagnostics");
 #endif
         // Allocate memory for in-situ diagnostics
-        m_insitu_rdata.resize(m_laser_geom_3D.Domain().length(2)*m_insitu_nrp, 0.);
+        m_insitu_rdata.resize(m_laser_geom_3D.Domain().length(2)*m_insitu_nrp, amrex::Real(0));
         m_insitu_sum_rdata.resize(m_insitu_nrp, 0.);
-        m_insitu_cdata.resize(m_laser_geom_3D.Domain().length(2)*m_insitu_ncp, 0.);
+        m_insitu_cdata.resize(m_laser_geom_3D.Domain().length(2)*m_insitu_ncp, amrex::Real(0));
     }
 }
 
@@ -788,7 +788,7 @@ MultiLaser::AdvanceSliceFFT (const amrex::Real dt, int step)
                 amrex::Real kx = (i<imid) ? dkx*i : dkx*(i-Nx);
                 amrex::Real ky = (j<jmid) ? dky*j : dky*(j-Ny);
                 const Complex inv_k2a = abs(kx*kx + ky*ky + acoeff) > 0. ?
-                    1._rt/(kx*kx + ky*ky + acoeff) : 0.;
+                    1._rt/(kx*kx + ky*ky + acoeff) : 0._rt;
                 rhs_fourier_arr(i,j) *= -inv_k2a;
             });
 
@@ -1104,5 +1104,5 @@ MultiLaser::InSituWriteToFile (int step, amrex::Real time, int max_step, amrex::
     // reset arrays for insitu data
     for (auto& x : m_insitu_rdata) x = 0.;
     for (auto& x : m_insitu_sum_rdata) x = 0.;
-    for (auto& x : m_insitu_cdata) x = 0.;
+    for (auto& x : m_insitu_cdata) x = amrex::Real(0);
 }

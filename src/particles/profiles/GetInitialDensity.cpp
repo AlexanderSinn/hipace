@@ -145,8 +145,9 @@ PlasmaDensityAccessor::define_from_file (const std::string& path, std::shared_pt
         m_strides[i] = idx_perm[i] != -1 ? strides[idx_perm[i]] : 0;
         m_bigend[i] = idx_perm[i] != -1 ? extent[idx_perm[i]] - 1 : 0;
         m_pos_offset[i] = idx_perm[i] != -1 ? static_cast<amrex::Real>(
-            offset[idx_perm[i]] + spacing[idx_perm[i]] * position[idx_perm[i]]) : 0;
-        m_dx_inv[i] = idx_perm[i] != -1 ? static_cast<amrex::Real>(1. / spacing[idx_perm[i]]) : 0;
+            offset[idx_perm[i]] + spacing[idx_perm[i]] * position[idx_perm[i]]) : amrex::Real(0);
+        m_dx_inv[i] = idx_perm[i] != -1 ?
+            static_cast<amrex::Real>(1. / spacing[idx_perm[i]]) : amrex::Real(0);
     }
 
     if (use_mode) {
