@@ -207,7 +207,7 @@ public:
     /** Number of time iterations */
     inline static int m_max_step = 0;
     /** Maximum simulation time */
-    inline static amrex::Real m_max_time = amrex::Real::max();
+    inline static amrex::Real m_max_time = std::numeric_limits<amrex::Real>::max();
     /** Physical time of the simulation. At the end of the time step, it is the physical time
      * at which the fields have been calculated. The beam is one step ahead. */
     inline static amrex::Real m_physical_time = 0.0;
@@ -259,7 +259,7 @@ public:
     /** Relative tolerance for the multigrid solver, when using the explicit solver */
     inline static amrex::Real m_MG_tolerance_rel = 1.e-4;
     /** Absolute tolerance for the multigrid solver, when using the explicit solver */
-    inline static amrex::Real m_MG_tolerance_abs = amrex::Real::min();
+    inline static amrex::Real m_MG_tolerance_abs = std::numeric_limits<amrex::Real>::min();
     /** Level of verbosity for the MG solver */
     inline static int m_MG_verbose = 0;
     /** Whether to use amrex MLMG solver */

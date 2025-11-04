@@ -505,7 +505,7 @@ Hipace::Evolve ()
 
         m_physical_time = step == 0 ? m_initial_time : m_multi_buffer.get_time();
 
-        if (m_physical_time == amrex::Real::max()) {
+        if (m_physical_time == std::numeric_limits<amrex::Real>::max()) {
             if (step+1 <= m_max_step && !m_has_last_step) {
                 m_multi_buffer.put_time(m_physical_time);
             }
@@ -520,7 +520,7 @@ Hipace::Evolve ()
         if (m_physical_time == m_max_time) {
             m_has_last_step = true;
             m_dt = 0.;
-            next_time = amrex::Real::max();
+            next_time = std::numeric_limits<amrex::Real>::max();
         } else if ((m_physical_time + m_dt >= m_max_time && m_physical_time < m_max_time) ||
                    (m_physical_time + m_dt <= m_max_time && m_physical_time > m_max_time)) {
             m_dt = m_max_time - m_physical_time;

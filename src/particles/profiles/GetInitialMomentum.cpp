@@ -21,7 +21,7 @@ GetInitialMomentum::GetInitialMomentum (const std::string& name)
         queryWithParser(pp, "do_symmetrize", do_symmetrize);
         if (do_symmetrize) {
             AMREX_ALWAYS_ASSERT_WITH_MESSAGE( std::fabs(m_u_mean[0]) +std::fabs(m_u_mean[1])
-                                               < amrex::Real::epsilon(),
+                                               < std::numeric_limits<amrex::Real>::epsilon(),
             "Symmetrizing the beam is only implemented for no mean momentum in x and y");
         }
     } else {

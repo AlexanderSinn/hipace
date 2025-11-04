@@ -141,8 +141,8 @@ InitBeamFixedPPC3D ()
     const amrex::Real y_mean = m_position_mean[1];
     const amrex::Real z_min = m_zmin;
     const amrex::Real z_max = m_zmax;
-    const amrex::Real radius_sq = m_radius == amrex::Real::max() ?
-        amrex::Real::max() : m_radius * m_radius;
+    const amrex::Real radius_sq = m_radius == std::numeric_limits<amrex::Real>::max() ?
+        amrex::Real(std::numeric_limits<amrex::Real>::max()) : m_radius * m_radius;
     const amrex::Real min_density = m_min_density;
     const amrex::GpuArray<int, 3> rand_ppc {m_random_ppc[0], m_random_ppc[1], m_random_ppc[2]};
 
@@ -225,8 +225,8 @@ InitBeamFixedPPCSlice (const int islice, const int which_beam_slice)
     const amrex::Real y_mean = m_position_mean[1];
     const amrex::Real z_min = m_zmin;
     const amrex::Real z_max = m_zmax;
-    const amrex::Real radius_sq = m_radius == amrex::Real::max() ?
-        amrex::Real::max() : m_radius * m_radius;
+    const amrex::Real radius_sq = m_radius == std::numeric_limits<amrex::Real>::max() ?
+        amrex::Real(std::numeric_limits<amrex::Real>::max()) : m_radius * m_radius;
     const amrex::Real min_density = m_min_density;
     const amrex::GpuArray<int, 3> rand_ppc {m_random_ppc[0], m_random_ppc[1], m_random_ppc[2]};
 
@@ -426,8 +426,8 @@ InitBeamFixedWeightSlice (int slice, int which_slice)
     const amrex::Real z_mean = can ? 0.5_rt * (z_min + z_max) : m_pos_mean_z;
     const amrex::RealVect pos_std = m_position_std;
     const amrex::Real z_foc = m_z_foc;
-    const amrex::Real radius_sq = m_radius == amrex::Real::max() ?
-        amrex::Real::max() : m_radius * m_radius;
+    const amrex::Real radius_sq = m_radius == std::numeric_limits<amrex::Real>::max() ?
+        amrex::Real(std::numeric_limits<amrex::Real>::max()) : m_radius * m_radius;
     auto pos_mean_x = m_pos_mean_x_func;
     auto pos_mean_y = m_pos_mean_y_func;
     const amrex::Real weight = m_total_charge / (m_num_particles * m_charge);
@@ -622,8 +622,8 @@ InitBeamFixedWeightPDFSlice (int slice, int which_slice)
         const bool do_symmetrize = m_do_symmetrize;
         const bool peak_density_is_specified = m_peak_density_is_specified;
         const amrex::Real z_foc = m_z_foc;
-        const amrex::Real radius_sq = m_radius == amrex::Real::max() ?
-            amrex::Real::max() : m_radius * m_radius;
+        const amrex::Real radius_sq = m_radius == std::numeric_limits<amrex::Real>::max() ?
+            amrex::Real(std::numeric_limits<amrex::Real>::max()) : m_radius * m_radius;
         const amrex::Real weight = m_total_weight / m_num_particles;
         const auto pos_func = m_pdf_pos_func;
         const auto u_func = m_pdf_u_func;
