@@ -163,8 +163,8 @@ ExplicitDeposition (PlasmaParticleContainer& plasma, Fields& fields,
 
                 const amrex::Real charge_density_mu0 = q_invvol_mu0 * ptd.rdata(PlasmaIdx::w)[ip];
 
-                const amrex::Real xmid = (xp - x_pos_offset) * dx_inv;
-                const amrex::Real ymid = (yp - y_pos_offset) * dy_inv;
+                const amrex::Real xmid = amrex::Real::unchecked_sub(xp, x_pos_offset) * dx_inv;
+                const amrex::Real ymid = amrex::Real::unchecked_sub(yp, y_pos_offset) * dy_inv;
 
                 amrex::Real Aabssqp = 0._rt;
                 if (use_laser) {
@@ -182,6 +182,8 @@ ExplicitDeposition (PlasmaParticleContainer& plasma, Fields& fields,
                     + vy * vy
                     + 1._rt
                 );
+
+                const amrex::Real gamma_psi_m1 = amrex::Real::unchecked_sub(gamma_psi, 1._rt);
 
 #ifdef AMREX_USE_GPU
 #pragma unroll
@@ -239,7 +241,7 @@ ExplicitDeposition (PlasmaParticleContainer& plasma, Fields& fields,
                                 - vx * vy
                             )
                             - shape_x * shape_dy * dy_inv * (
-                                gamma_psi - vy * vy - 1._rt
+                                gamma_psi_m1 - vy * vy
                             )) * a_clight
                         ));
 
@@ -252,7 +254,7 @@ ExplicitDeposition (PlasmaParticleContainer& plasma, Fields& fields,
                                 - 0.25_rt * AabssqDxp * q_mass_ratio * psi_inv
                             ) * q_mass_ratio * psi_inv
                             + ( + shape_dx * shape_y * dx_inv * (
-                                gamma_psi - vx * vx - 1._rt
+                                gamma_psi_m1 - vx * vx
                             )
                             + shape_x * shape_dy * dy_inv * (
                                 - vx * vy

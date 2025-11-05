@@ -186,7 +186,7 @@ Real residual1 (int i, int j, int n, int ilo, int jlo, int ihi, int jhi,
                 Array4<Real> const& phi, Real rhs, Real acf, Real facx, Real facy)
 {
     Real lap = laplacian(i,j,n,ilo,jlo,ihi,jhi,phi,facx,facy);
-    return rhs + acf*phi(i,j,0,n) - lap;
+    return amrex::Real::unchecked_sub( rhs + acf*phi(i,j,0,n), lap);
 }
 
 AMREX_GPU_DEVICE AMREX_FORCE_INLINE

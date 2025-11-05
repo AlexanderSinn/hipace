@@ -64,8 +64,8 @@ void doGatherShapeN (const amrex::Real xp,
                      const amrex::Real y_pos_offset)
 {
     // x,y direction
-    const amrex::Real x = (xp-x_pos_offset)*dx_inv;
-    const amrex::Real y = (yp-y_pos_offset)*dy_inv;
+    const amrex::Real x = amrex::Real::unchecked_sub(xp, x_pos_offset)*dx_inv;
+    const amrex::Real y = amrex::Real::unchecked_sub(yp, y_pos_offset)*dy_inv;
 
     constexpr int derivative_type = 1;
 

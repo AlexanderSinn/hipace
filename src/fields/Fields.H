@@ -446,7 +446,9 @@ public:
                 [=] AMREX_GPU_DEVICE(int i, int j)
                 {
                     for (int n=0; n<ncomps; ++n) {
-                        array(i,j,c_idx_dst[n]) += array(i,j,c_idx_src[n]);
+                        array(i,j,c_idx_dst[n]) =
+                            amrex::Real::unchecked_add(array(i,j,c_idx_dst[n]),
+                                                       array(i,j,c_idx_src[n]));
                     }
                 });
         }

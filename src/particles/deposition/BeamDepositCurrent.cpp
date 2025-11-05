@@ -155,7 +155,7 @@ DepositCurrentSlice (BeamParticleContainer& beam, Fields& fields,
             const amrex::Real wqx = wq*vx;
             const amrex::Real wqy = wq*vy;
             const amrex::Real wqz = wq*vz;
-            const amrex::Real wqrhomjz = wq*(1._rt-vz*clightinv);
+            const amrex::Real wqrhomjz = wq*amrex::Real::unchecked_sub(1._rt, vz*clightinv);
 
             // --- Compute shape factors
             // x direction

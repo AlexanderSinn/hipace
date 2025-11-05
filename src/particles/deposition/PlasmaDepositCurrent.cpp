@@ -184,8 +184,8 @@ DepositCurrent (PlasmaParticleContainer& plasma, Fields & fields,
                         ptd.idata(PlasmaIdx::ion_lev)[ip] * ptd.idata(PlasmaIdx::ion_lev)[ip];
                 }
 
-                const amrex::Real xmid = (xp - x_pos_offset) * dx_inv;
-                const amrex::Real ymid = (yp - y_pos_offset) * dy_inv;
+                const amrex::Real xmid = amrex::Real::unchecked_sub(xp, x_pos_offset) * dx_inv;
+                const amrex::Real ymid = amrex::Real::unchecked_sub(yp, y_pos_offset) * dy_inv;
 
                 amrex::Real Aabssqp = 0._rt;
                 if constexpr (use_laser) {
@@ -200,6 +200,12 @@ DepositCurrent (PlasmaParticleContainer& plasma, Fields & fields,
                     + vx_c * vx_c * clightinv * clightinv
                     + vy_c * vy_c * clightinv * clightinv
                     + 1._rt
+                );
+
+                const amrex::Real gamma_psi_m1 = 0.5_rt * (
+                    amrex::Real::unchecked_sub((1._rt + 0.5_rt * Aabssqp) * psi_inv * psi_inv, 1._rt)
+                    + vx_c * vx_c * clightinv * clightinv
+                    + vy_c * vy_c * clightinv * clightinv
                 );
 
                 if (gamma_psi < 0.0_rt || gamma_psi > max_qsa_weighting_factor || psi_inv < 0.0_rt)
@@ -229,7 +235,7 @@ DepositCurrent (PlasmaParticleContainer& plasma, Fields & fields,
                         // wqx, wqy wqz are particle current in each direction
                         const amrex::Real wqx     = charge_density * vx_c;
                         const amrex::Real wqy     = charge_density * vy_c;
-                        const amrex::Real wqz     = charge_density * (gamma_psi-1._rt) * clight;
+                        const amrex::Real wqz     = charge_density * gamma_psi_m1 * clight;
                         const amrex::Real wq      = charge_density * gamma_psi;
                         const amrex::Real wchi    = charge_density * q_mu0_mass_ratio * psi_inv;
                         const amrex::Real wrhomjz = charge_density;
