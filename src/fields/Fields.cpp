@@ -260,7 +260,7 @@ struct derivative_inner {
     AMREX_GPU_DEVICE amrex::Real operator() (int i, int j) const noexcept {
         constexpr bool is_x_dir = dir == Direction::x;
         constexpr bool is_y_dir = dir == Direction::y;
-        return (array(i+is_x_dir,j+is_y_dir) - array(i-is_x_dir,j-is_y_dir)) * dx_inv;
+        return amrex::Real::unchecked_sub(array(i+is_x_dir,j+is_y_dir), array(i-is_x_dir,j-is_y_dir)) * dx_inv;
     }
 };
 
@@ -411,7 +411,8 @@ LinCombination (amrex::MultiFab dst,
         amrex::ParallelFor(to2D(mfi.growntilebox()),
             [=] AMREX_GPU_DEVICE(int i, int j) noexcept
             {
-                dst_array(i,j) = factor_a * src_a_array(i,j) + factor_b * src_b_array(i,j);
+                dst_array(i,j) = amrex::Real::unchecked_add(
+                    factor_a * src_a_array(i,j), factor_b * src_b_array(i,j));
             });
     }
 }
@@ -984,8 +985,8 @@ Fields::SolvePoissonPsiExmByEypBxEzBz (amrex::Vector<amrex::Geometry> const& geo
                 [=] AMREX_GPU_DEVICE(int i, int j)
                 {
                     // derivatives in x and y direction, no guards needed
-                    arr(i,j,ExmBy) = - (arr(i+1,j,Psi) - arr(i-1,j,Psi))*dx_inv;
-                    arr(i,j,EypBx) = - (arr(i,j+1,Psi) - arr(i,j-1,Psi))*dy_inv;
+                    arr(i,j,ExmBy) = - amrex::Real::unchecked_sub(arr(i+1,j,Psi), arr(i-1,j,Psi))*dx_inv;
+                    arr(i,j,EypBx) = - amrex::Real::unchecked_sub(arr(i,j+1,Psi), arr(i,j-1,Psi))*dy_inv;
                 });
         }
     }

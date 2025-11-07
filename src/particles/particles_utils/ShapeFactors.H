@@ -308,7 +308,7 @@ derivative_shape_factor_result single_derivative_shape_factor (amrex::Real xmid,
             const amrex::Real xint_2 = xint*xint;
             if (ix==0) {
                 const amrex::Real s_x = (xint < 0.5_rt) ?
-                    (1.0_rt/2.0_rt)*xint_2 - 1.0_rt/2.0_rt*xint + 1.0_rt/8.0_rt : 0._rt;
+                    amrex::Real::unchecked_add( (1.0_rt/2.0_rt)*xint_2 - 1.0_rt/2.0_rt*xint, 1.0_rt/8.0_rt) : 0._rt;
                 const amrex::Real sdx = amrex::Real::unchecked_sub(-1.0_rt/2.0_rt*xint_2 + xint, 1.0_rt/2.0_rt);
                 return {s_x, -sdx, static_cast<int>(xfloor)-1+ix};
             } else if (ix==1) {
@@ -319,11 +319,11 @@ derivative_shape_factor_result single_derivative_shape_factor (amrex::Real xmid,
             } else if (ix==2) {
                 const amrex::Real s_x = (xint < 0.5_rt) ?
                     (1.0_rt/2.0_rt)*xint_2 + (1.0_rt/2.0_rt)*xint + 1.0_rt/8.0_rt : -xint_2 + 2*xint - 1.0_rt/4.0_rt;
-                const amrex::Real sdx = amrex::Real::unchecked_add(-3.0_rt/2.0_rt*xint_2 + xint, 1.0_rt/2.0_rt);
+                const amrex::Real sdx = amrex::Real::unchecked_add(amrex::Real::unchecked_add(-3.0_rt/2.0_rt*xint_2, xint), 1.0_rt/2.0_rt);
                 return {s_x, -sdx, static_cast<int>(xfloor)-1+ix};
             } else {
                 const amrex::Real s_x = (xint < 0.5_rt) ?
-                    0._rt : 1.0_rt/8.0_rt + (1.0_rt/2.0_rt)*xint_2 - 1.0_rt/2.0_rt*xint;
+                    0._rt : amrex::Real::unchecked_sub(1.0_rt/8.0_rt + (1.0_rt/2.0_rt)*xint_2, 1.0_rt/2.0_rt*xint);
                 const amrex::Real sdx = (1.0_rt/2.0_rt)*xint_2;
                 return {s_x, -sdx, static_cast<int>(xfloor)-1+ix};
             }
@@ -409,10 +409,10 @@ derivative_shape_factor_result single_derivative_shape_factor (amrex::Real xmid,
             const amrex::Real xint_2 = xint*xint;
             if (ix==0) {
                 const amrex::Real s_x = 0;
-                const amrex::Real sdx = -1.0_rt/4.0_rt*xint_2 + (1.0_rt/2.0_rt)*xint - 1.0_rt/4.0_rt;
+                const amrex::Real sdx = amrex::Real::unchecked_sub(-1.0_rt/4.0_rt*xint_2 + (1.0_rt/2.0_rt)*xint, 1.0_rt/4.0_rt);
                 return {s_x, -sdx, static_cast<int>(xfloor)-2+ix};
             } else if (ix==1) {
-                const amrex::Real s_x = (1.0_rt/2.0_rt)*xint_2 - xint + 1.0_rt/2.0_rt;
+                const amrex::Real s_x = amrex::Real::unchecked_add((1.0_rt/2.0_rt)*xint_2 - xint, 1.0_rt/2.0_rt);
                 const amrex::Real sdx = (1.0_rt/2.0_rt)*xint_2 - 1.0_rt/2.0_rt*xint - 1.0_rt/4.0_rt;
                 return {s_x, -sdx, static_cast<int>(xfloor)-2+ix};
             } else if (ix==2) {

@@ -23,12 +23,12 @@ struct DualNumber {
 
     friend AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE constexpr
     DualNumber operator+ (const DualNumber& a, const DualNumber& b) {
-        return {a.value + b.value, a.epsilon + b.epsilon};
+        return {amrex::Real::unchecked_add(a.value, b.value), amrex::Real::unchecked_add(a.epsilon, b.epsilon)};
     }
 
     friend AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE constexpr
     DualNumber operator- (const DualNumber& a, const DualNumber& b) {
-        return {a.value - b.value, a.epsilon - b.epsilon};
+        return {amrex::Real::unchecked_sub(a.value, b.value), amrex::Real::unchecked_sub(a.epsilon, b.epsilon)};
     }
 
     friend AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE constexpr

@@ -168,8 +168,8 @@ InitParticles (const amrex::RealVect& a_u_std,
 
                     if (!do_init) continue;
 
-                    amrex::Real x = plo[0] + (i + r[0] + x_offset)*dx[0];
-                    amrex::Real y = plo[1] + (j + r[1] + y_offset)*dx[1];
+                    amrex::Real x = amrex::Real::unchecked_add(plo[0], (i + r[0] + x_offset)*dx[0]);
+                    amrex::Real y = amrex::Real::unchecked_add(plo[1], (j + r[1] + y_offset)*dx[1]);
 
                     const amrex::Real rsq = x*x + y*y;
                     if (x >= a_bounds.hi(0) || x < a_bounds.lo(0) ||
@@ -222,8 +222,8 @@ InitParticles (const amrex::RealVect& a_u_std,
 
                 if (!do_init) return;
 
-                amrex::Real x = plo[0] + (i + r[0] + x_offset)*dx[0];
-                amrex::Real y = plo[1] + (j + r[1] + y_offset)*dx[1];
+                amrex::Real x = amrex::Real::unchecked_add(plo[0], (i + r[0] + x_offset)*dx[0]);
+                amrex::Real y = amrex::Real::unchecked_add(plo[1], (j + r[1] + y_offset)*dx[1]);
 
                 const amrex::Real rsq = x*x + y*y;
                 if (x >= a_bounds.hi(0) || x < a_bounds.lo(0) ||
@@ -282,8 +282,8 @@ InitParticles (const amrex::RealVect& a_u_std,
 
                 if (!do_init) return;
 
-                amrex::Real x = plo[0] + (i + r[0] + x_offset)*dx[0];
-                amrex::Real y = plo[1] + (j + r[1] + y_offset)*dx[1];
+                amrex::Real x = amrex::Real::unchecked_add(plo[0], (i + r[0] + x_offset)*dx[0]);
+                amrex::Real y = amrex::Real::unchecked_add(plo[1], (j + r[1] + y_offset)*dx[1]);
 
                 const amrex::Real density = density_func(x, y, c_t);
 

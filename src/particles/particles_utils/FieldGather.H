@@ -85,9 +85,9 @@ void doGatherShapeN (const amrex::Real xp,
             auto [shape_x, shape_dx, i] =
                 single_derivative_shape_factor<derivative_type, depos_order_xy>(x, ix);
 
-            ExmByp += (shape_dx* shape_y) * slice_arr(i, j, psi_comp) * dx_inv;
-            EypBxp += (shape_x * shape_dy)* slice_arr(i, j, psi_comp) * dy_inv;
-            Ezp    += (shape_x * shape_y) * slice_arr(i, j, ez_comp);
+            ExmByp = amrex::Real::unchecked_add(ExmByp, (shape_dx* shape_y) * slice_arr(i, j, psi_comp) * dx_inv);
+            EypBxp = amrex::Real::unchecked_add(EypBxp, (shape_x * shape_dy)* slice_arr(i, j, psi_comp) * dy_inv);
+            Ezp    = amrex::Real::unchecked_add(Ezp, (shape_x * shape_y) * slice_arr(i, j, ez_comp));
             Bxp    += (shape_x * shape_y) * slice_arr(i, j, bx_comp);
             Byp    += (shape_x * shape_y) * slice_arr(i, j, by_comp);
             Bzp    += (shape_x * shape_y) * slice_arr(i, j, bz_comp);

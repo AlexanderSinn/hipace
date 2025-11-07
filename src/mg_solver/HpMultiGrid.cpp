@@ -40,15 +40,23 @@ template <typename T, typename U>
 AMREX_GPU_DEVICE AMREX_FORCE_INLINE
 void restrict_nd (int i, int j, int n, Array4<T> const& crse, Array4<U> const& fine)
 {
-    crse(i,j,0,n) = Real(1./16.) * (fine(2*i-1,2*j-1,0,n) +
-                           Real(2.)*fine(2*i  ,2*j-1,0,n) +
-                                    fine(2*i+1,2*j-1,0,n) +
-                           Real(2.)*fine(2*i-1,2*j  ,0,n) +
-                           Real(4.)*fine(2*i  ,2*j  ,0,n) +
-                           Real(2.)*fine(2*i+1,2*j  ,0,n) +
-                                    fine(2*i-1,2*j+1,0,n) +
-                           Real(2.)*fine(2*i  ,2*j+1,0,n) +
-                                    fine(2*i+1,2*j+1,0,n));
+    crse(i,j,0,n) = Real(1./16.) * (amrex::Real::unchecked_add(
+                                    amrex::Real::unchecked_add(
+                                    amrex::Real::unchecked_add(
+                                    amrex::Real::unchecked_add(
+                                    amrex::Real::unchecked_add(
+                                    amrex::Real::unchecked_add(
+                                    amrex::Real::unchecked_add(
+                                    amrex::Real::unchecked_add(
+                                    fine(2*i-1,2*j-1,0,n),
+                           Real(2.)*fine(2*i  ,2*j-1,0,n)),
+                                    fine(2*i+1,2*j-1,0,n)),
+                           Real(2.)*fine(2*i-1,2*j  ,0,n)),
+                           Real(4.)*fine(2*i  ,2*j  ,0,n)),
+                           Real(2.)*fine(2*i+1,2*j  ,0,n)),
+                                    fine(2*i-1,2*j+1,0,n)),
+                           Real(2.)*fine(2*i  ,2*j+1,0,n)),
+                                    fine(2*i+1,2*j+1,0,n)));
 }
 
 template <typename T, typename U>
@@ -159,7 +167,7 @@ void interpolation_outofplace (Box const& box, Array4<Real const> const& fine_in
 // Compute residual: ///////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-AMREX_GPU_DEVICE AMREX_FORCE_INLINE
+// AMREX_GPU_DEVICE AMREX_FORCE_INLINE
 Real laplacian (int i, int j, int n, int ilo, int jlo, int ihi, int jhi,
                 Array4<Real> const& phi, Real facx, Real facy)
 {
@@ -169,14 +177,14 @@ Real laplacian (int i, int j, int n, int ilo, int jlo, int ihi, int jhi,
     } else if (i == ihi) {
         lap += facx * (Real(4./3.)*phi(i-1,j,0,n) - Real(2.)*phi(i,j,0,n));
     } else {
-        lap += facx * (phi(i-1,j,0,n) + phi(i+1,j,0,n));
+        lap = amrex::Real::unchecked_add(lap, facx * amrex::Real::unchecked_add(phi(i-1,j,0,n), phi(i+1,j,0,n)));
     }
     if (j == jlo) {
         lap += facy * (Real(4./3.)*phi(i,j+1,0,n) - Real(2.)*phi(i,j,0,n));
     } else if (j == jhi) {
         lap += facy * (Real(4./3.)*phi(i,j-1,0,n) - Real(2.)*phi(i,j,0,n));
     } else {
-        lap += facy * (phi(i,j-1,0,n) + phi(i,j+1,0,n));
+        lap = amrex::Real::unchecked_add(lap, facy * amrex::Real::unchecked_add(phi(i,j-1,0,n), phi(i,j+1,0,n)));
     }
     return lap;
 }
@@ -186,7 +194,7 @@ Real residual1 (int i, int j, int n, int ilo, int jlo, int ihi, int jhi,
                 Array4<Real> const& phi, Real rhs, Real acf, Real facx, Real facy)
 {
     Real lap = laplacian(i,j,n,ilo,jlo,ihi,jhi,phi,facx,facy);
-    return amrex::Real::unchecked_sub( rhs + acf*phi(i,j,0,n), lap);
+    return amrex::Real::unchecked_sub( amrex::Real::unchecked_add(rhs, acf*phi(i,j,0,n)), lap);
 }
 
 AMREX_GPU_DEVICE AMREX_FORCE_INLINE
@@ -276,7 +284,7 @@ void gs1 (int i, int j, int n, int ilo, int jlo, int ihi, int jhi,
         lap = facx * Real(4./3.)*phi(i-1,j,0,n);
         c0 -= Real(2.)*facx;
     } else {
-        lap = facx * (phi(i-1,j,0,n) + phi(i+1,j,0,n));
+        lap = facx * amrex::Real::unchecked_add(phi(i-1,j,0,n), phi(i+1,j,0,n));
     }
     if (is_cell_centered && j == jlo) {
         lap += facy * Real(4./3.)*phi(i,j+1,0,n);
@@ -285,7 +293,7 @@ void gs1 (int i, int j, int n, int ilo, int jlo, int ihi, int jhi,
         lap += facy * Real(4./3.)*phi(i,j-1,0,n);
         c0 -= Real(2.)*facy;
     } else {
-        lap += facy * (phi(i,j-1,0,n) + phi(i,j+1,0,n));
+        lap += facy * amrex::Real::unchecked_add(phi(i,j-1,0,n), phi(i,j+1,0,n));
     }
     const Real c0_inv = Real(1.) / c0;
     phi(i,j,0,n) = (rhs - lap) * c0_inv;

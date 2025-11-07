@@ -229,7 +229,8 @@ ExplicitDeposition (PlasmaParticleContainer& plasma, Fields& fields,
                             }
                         }
 
-                        amrex::Gpu::Atomic::Add(arr.ptr(i, j, depos_idx[0]), charge_density_mu0 * (
+                        arr(i, j, depos_idx[0]) =
+                            amrex::Real::unchecked_add(arr(i, j, depos_idx[0]), charge_density_mu0 * (
                             - shape_x * shape_y * (
                                 - Bz_v * vx
                                 + ( Ez_v * vy
@@ -245,7 +246,8 @@ ExplicitDeposition (PlasmaParticleContainer& plasma, Fields& fields,
                             )) * a_clight
                         ));
 
-                        amrex::Gpu::Atomic::Add(arr.ptr(i, j, depos_idx[1]), charge_density_mu0 * (
+                        arr(i, j, depos_idx[1]) =
+                            amrex::Real::unchecked_add(arr(i, j, depos_idx[1]), charge_density_mu0 * (
                             + shape_x * shape_y * (
                                 + Bz_v * vy
                                 + ( Ez_v * vx
@@ -253,10 +255,10 @@ ExplicitDeposition (PlasmaParticleContainer& plasma, Fields& fields,
                                 + EypBx_v * (          - vx * vy) ) * clight_inv
                                 - 0.25_rt * AabssqDxp * q_mass_ratio * psi_inv
                             ) * q_mass_ratio * psi_inv
-                            + ( + shape_dx * shape_y * dx_inv * (
+                            + amrex::Real::unchecked_add( + shape_dx * shape_y * dx_inv * (
                                 gamma_psi_m1 - vx * vx
                             )
-                            + shape_x * shape_dy * dy_inv * (
+                            , shape_x * shape_dy * dy_inv * (
                                 - vx * vy
                             )) * a_clight
                         ));

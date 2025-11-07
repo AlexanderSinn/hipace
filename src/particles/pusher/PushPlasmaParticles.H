@@ -37,6 +37,25 @@ struct PlasmaMomentumDerivative {
  */
 
 template<class T>
+T unchecked_sub(T a, amrex::Real b) {
+    return a - b;
+}
+
+amrex::Real unchecked_sub(amrex::Real a, amrex::Real b) {
+    return amrex::Real::unchecked_sub(a, b);
+}
+
+template<class T>
+T unchecked_add(T a, amrex::Real b) {
+    return a + b;
+}
+
+amrex::Real unchecked_add(amrex::Real a, amrex::Real b) {
+    return amrex::Real::unchecked_add(a, b);
+}
+
+
+template<class T>
 AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
 PlasmaMomentumDerivative<T> PlasmaMomentumPush (
     const T& ux,
@@ -62,11 +81,13 @@ PlasmaMomentumDerivative<T> PlasmaMomentumPush (
                         + uy*uy*(clight_inv*clight_inv))
                         + 0.5_rt;
 
-    const T dz_ux = (charge_mass_clight_ratio * (gamma_psi * ExmBy
-                    + By_clight + ( uy * Bz ) * psi_inv) - AabssqDx_norm * psi_inv);
+    const T dz_ux = (charge_mass_clight_ratio * (
+                        unchecked_add(gamma_psi * ExmBy
+                    , By_clight) + ( uy * Bz ) * psi_inv) - AabssqDx_norm * psi_inv);
 
-    const T dz_uy = (charge_mass_clight_ratio * (gamma_psi * EypBx
-                    - Bx_clight - ( ux * Bz ) * psi_inv) - AabssqDy_norm * psi_inv);
+    const T dz_uy = (charge_mass_clight_ratio * (
+                        unchecked_sub(gamma_psi * EypBx
+                    , Bx_clight) - ( ux * Bz ) * psi_inv) - AabssqDy_norm * psi_inv);
 
     const T dz_psi = (charge_mass_clight_ratio * clight_inv *
                          (( ux * ExmBy + uy * EypBx ) * clight_inv * psi_inv - Ez ));

@@ -417,7 +417,7 @@ Diagnostic::TrimIOBox (int slice_dir, amrex::Box& domain_3d, amrex::RealBox& rbo
     if (slice_dir >= 0){
         const amrex::Real half_cell_size = rbox_3d.length(slice_dir) /
                                            ( 2. * domain_3d.length(slice_dir) );
-        const amrex::Real mid = (rbox_3d.lo(slice_dir) + rbox_3d.hi(slice_dir)) / 2.;
+        const amrex::Real mid = amrex::Real::unchecked_add(rbox_3d.lo(slice_dir), rbox_3d.hi(slice_dir)) / 2.;
         // Flatten the box down to 1 cell in the approprate direction.
         domain_3d.setSmall(slice_dir, 0);
         domain_3d.setBig  (slice_dir, 0);

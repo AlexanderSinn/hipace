@@ -543,7 +543,8 @@ InitBeamFixedWeightPDF3D ()
 
     // calculate uz and uz_std for AdaptiveTimeStep
     m_get_momentum.m_u_mean[2] = avg_uz/integral;
-    m_get_momentum.m_u_std[2] = std::sqrt(avg_uz_sq/integral - (avg_uz/integral)*(avg_uz/integral));
+    m_get_momentum.m_u_std[2] = std::sqrt(
+        amrex::Real::unchecked_sub(avg_uz_sq/integral, (avg_uz/integral)*(avg_uz/integral)));
 
     if (Hipace::m_normalized_units) {
         m_total_weight *= geom.InvCellSize(0)*geom.InvCellSize(1)*geom.InvCellSize(2);

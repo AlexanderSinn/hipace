@@ -69,7 +69,7 @@ inline amrex::Real
 GetPosOffset (const int dir, const amrex::Geometry& geom, const amrex::Box& box) {
     using namespace amrex::literals;
     // match boxes at center point
-    return 0.5_rt * (geom.ProbLo(dir) + geom.ProbHi(dir)
+    return 0.5_rt * (amrex::Real::unchecked_add(geom.ProbLo(dir), geom.ProbHi(dir))
            - geom.CellSize(dir) * (box.smallEnd(dir) + box.bigEnd(dir)));
 }
 
