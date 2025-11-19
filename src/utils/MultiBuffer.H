@@ -138,6 +138,9 @@ private:
     std::array<int, comm_progress::nprogress> m_async_metadata_slice {};
     std::array<int, comm_progress::nprogress> m_async_data_slice {};
 
+    // Buffer to queue up multiple memcpy operations
+    amrex::Gpu::Buffer<amrex::GpuTuple<void*, const void*, std::size_t>> m_memcpy_buffer;
+
     // calculate distance of a and b in the periodic range [0,m_nslices) with
     // a barrier at current_slice
     int periodic_distance (int current_slice, int a, int b) const;
