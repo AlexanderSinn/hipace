@@ -61,9 +61,11 @@ void MultiBuffer::free_buffer (int slice) {
     std::size_t buffer_size = 1;
     while (buffer_size < buffer_size_min) { buffer_size <<= 1; }
     if (m_datanodes[slice].m_location == memory_location::pinned) {
-        amrex::The_Pinned_Arena()->free(m_datanodes[slice].m_buffer);
+        amrex::Gpu::streamFree(
+            amrex::The_Pinned_Arena(), m_datanodes[slice].m_buffer);
     } else {
-        amrex::The_Comms_Arena()->free(m_datanodes[slice].m_buffer);
+        amrex::Gpu::streamFree(
+            amrex::The_Comms_Arena(), m_datanodes[slice].m_buffer);
     }
     m_current_buffer_size -=buffer_size;
     m_datanodes[slice].m_location = memory_location::nowhere;
@@ -92,6 +94,9 @@ void MultiBuffer::initialize (int nslices, MultiBeam& beams, MultiLaser& laser,
     m_tag_time_start = 0;
     m_tag_buffer_start = 1;
     m_tag_metadata_start = m_tag_buffer_start + m_nslices;
+
+    m_memcpy_pack_buffer.reserve(250);
+    m_memcpy_unpack_buffer.reserve(250);
 
     queryWithParser(pp, "on_gpu", m_buffer_on_gpu);
     queryWithParser(pp, "max_leading_slices", m_max_leading_slices);
@@ -808,11 +813,11 @@ void MultiBuffer::memcpy_to_buffer (int slice, std::size_t buffer_offset,
                                     const void* src_ptr, std::size_t num_bytes) {
     if (num_bytes > 0) {
         if (m_async_memcpy) {
-            m_memcpy_buffer.push_back(
+            m_memcpy_pack_buffer.push_back(
                 {m_trailing_gpu_buffer.dataPtr() + buffer_offset, src_ptr, num_bytes}
             );
         } else {
-            m_memcpy_buffer.push_back(
+            m_memcpy_pack_buffer.push_back(
                 {m_datanodes[slice].m_buffer + buffer_offset, src_ptr, num_bytes}
             );
         }
@@ -823,11 +828,11 @@ void MultiBuffer::memcpy_from_buffer (int slice, std::size_t buffer_offset,
                                       void* dst_ptr, std::size_t num_bytes) {
     if (num_bytes > 0) {
         if (m_async_memcpy) {
-            m_memcpy_buffer.push_back(
+            m_memcpy_unpack_buffer.push_back(
                 {dst_ptr, m_leading_gpu_buffer.dataPtr() + buffer_offset, num_bytes}
             );
         } else {
-            m_memcpy_buffer.push_back(
+            m_memcpy_unpack_buffer.push_back(
                 {dst_ptr, m_datanodes[slice].m_buffer + buffer_offset, num_bytes}
             );
         }
@@ -943,9 +948,9 @@ void MultiBuffer::pack_data (int slice, MultiBeam& beams, MultiLaser& laser, Hel
                              helmholtz.getSlices()[0].box().numPts() * sizeof(amrex::Real));
         }
     }
-    multi_memcpy(m_memcpy_buffer);
+    multi_memcpy(m_memcpy_pack_buffer);
     amrex::Gpu::streamSynchronize();
-    m_memcpy_buffer.clear();
+    m_memcpy_pack_buffer.clear();
     for (int b = 0; b < m_nbeams; ++b) {
         // remove all beam particles
         beams.getBeam(b).resize(beam_slice, 0, 0);
@@ -1047,7 +1052,7 @@ void MultiBuffer::unpack_data (int slice, MultiBeam& beams, MultiLaser& laser, H
                                helmholtz.getSlices()[0].box().numPts() * sizeof(amrex::Real));
         }
     }
-    multi_memcpy(m_memcpy_buffer);
-    amrex::Gpu::streamSynchronize();
-    m_memcpy_buffer.clear();
+    multi_memcpy(m_memcpy_unpack_buffer);
+    // amrex::Gpu::streamSynchronize();
+    m_memcpy_unpack_buffer.clear();
 }
