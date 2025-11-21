@@ -38,28 +38,34 @@ std::size_t* MultiBuffer::get_metadata_location (int slice) {
 
 void MultiBuffer::allocate_buffer (int slice) {
     AMREX_ALWAYS_ASSERT(m_datanodes[slice].m_location == memory_location::nowhere);
+    std::size_t buffer_size_min = m_datanodes[slice].m_buffer_size * sizeof(storage_type);
+    std::size_t buffer_size = 1;
+    while (buffer_size < buffer_size_min) { buffer_size <<= 1; }
     if (!m_buffer_on_gpu) {
         m_datanodes[slice].m_buffer = reinterpret_cast<char*>(amrex::The_Pinned_Arena()->alloc(
-            m_datanodes[slice].m_buffer_size * sizeof(storage_type)
+           buffer_size
         ));
         m_datanodes[slice].m_location = memory_location::pinned;
     } else {
-        m_datanodes[slice].m_buffer = reinterpret_cast<char*>(amrex::The_Device_Arena()->alloc(
-            m_datanodes[slice].m_buffer_size * sizeof(storage_type)
+        m_datanodes[slice].m_buffer = reinterpret_cast<char*>(amrex::The_Comms_Arena()->alloc(
+            buffer_size
         ));
         m_datanodes[slice].m_location = memory_location::device;
     }
-    m_current_buffer_size += m_datanodes[slice].m_buffer_size * sizeof(storage_type);
+    m_current_buffer_size += buffer_size;
 }
 
 void MultiBuffer::free_buffer (int slice) {
     AMREX_ALWAYS_ASSERT(m_datanodes[slice].m_location != memory_location::nowhere);
+    std::size_t buffer_size_min = m_datanodes[slice].m_buffer_size * sizeof(storage_type);
+    std::size_t buffer_size = 1;
+    while (buffer_size < buffer_size_min) { buffer_size <<= 1; }
     if (m_datanodes[slice].m_location == memory_location::pinned) {
         amrex::The_Pinned_Arena()->free(m_datanodes[slice].m_buffer);
     } else {
-        amrex::The_Device_Arena()->free(m_datanodes[slice].m_buffer);
+        amrex::The_Comms_Arena()->free(m_datanodes[slice].m_buffer);
     }
-    m_current_buffer_size -= m_datanodes[slice].m_buffer_size * sizeof(storage_type);
+    m_current_buffer_size -=buffer_size;
     m_datanodes[slice].m_location = memory_location::nowhere;
     m_datanodes[slice].m_buffer = nullptr;
     m_datanodes[slice].m_buffer_size = 0;
@@ -207,8 +213,8 @@ void MultiBuffer::pre_register_memory () {
         send_buffer = amrex::The_Pinned_Arena()->alloc(count * sizeof(storage_type));
         recv_buffer = amrex::The_Pinned_Arena()->alloc(count * sizeof(storage_type));
     } else {
-        send_buffer = amrex::The_Device_Arena()->alloc(count * sizeof(storage_type));
-        recv_buffer = amrex::The_Device_Arena()->alloc(count * sizeof(storage_type));
+        send_buffer = amrex::The_Comms_Arena()->alloc(count * sizeof(storage_type));
+        recv_buffer = amrex::The_Comms_Arena()->alloc(count * sizeof(storage_type));
     }
     // send and receive dummy message
     // use the same MPI functions and arguments as in the real communication
@@ -234,8 +240,8 @@ void MultiBuffer::pre_register_memory () {
         amrex::The_Pinned_Arena()->free(send_buffer);
         amrex::The_Pinned_Arena()->free(recv_buffer);
     } else {
-        amrex::The_Device_Arena()->free(send_buffer);
-        amrex::The_Device_Arena()->free(recv_buffer);
+        amrex::The_Comms_Arena()->free(send_buffer);
+        amrex::The_Comms_Arena()->free(recv_buffer);
     }
 #endif
 }
