@@ -317,12 +317,12 @@ InitParticles (const amrex::RealVect& a_u_std,
 
                 ptd.rdata(PlasmaIdx::ux)[pidx] = u[0];
                 ptd.rdata(PlasmaIdx::uy)[pidx] = u[1];
-                ptd.rdata(PlasmaIdx::psi)[pidx] = std::sqrt(1._rt+u[0]*u[0]+u[1]*u[1]+u[2]*u[2])-u[2];
+                ptd.rdata(PlasmaIdx::uz)[pidx] = u[2];
                 ptd.rdata(PlasmaIdx::x_prev)[pidx] = x;
                 ptd.rdata(PlasmaIdx::y_prev)[pidx] = y;
                 ptd.rdata(PlasmaIdx::ux_half_step)[pidx] = u[0];
                 ptd.rdata(PlasmaIdx::uy_half_step)[pidx] = u[1];
-                ptd.rdata(PlasmaIdx::psi_half_step)[pidx] = ptd.rdata(PlasmaIdx::psi)[pidx];
+                ptd.rdata(PlasmaIdx::uz_half_step)[pidx] = u[2];
 #ifdef HIPACE_USE_AB5_PUSH
 #ifdef AMREX_USE_GPU
 #pragma unroll
@@ -368,15 +368,15 @@ InitParticles (const amrex::RealVect& a_u_std,
                     ptd.rdata(PlasmaIdx::w)[midx] = ptd.rdata(PlasmaIdx::w)[pidx];
                     ptd.rdata(PlasmaIdx::ux)[midx] = ptd.rdata(PlasmaIdx::ux)[pidx] * ux_arr[imirror];
                     ptd.rdata(PlasmaIdx::uy)[midx] = ptd.rdata(PlasmaIdx::uy)[pidx] * uy_arr[imirror];
-                    ptd.rdata(PlasmaIdx::psi)[midx] = ptd.rdata(PlasmaIdx::psi)[pidx];
+                    ptd.rdata(PlasmaIdx::uz)[midx] = ptd.rdata(PlasmaIdx::uz)[pidx];
                     ptd.rdata(PlasmaIdx::x_prev)[midx] = x_arr[imirror];
                     ptd.rdata(PlasmaIdx::y_prev)[midx] = y_arr[imirror];
                     ptd.rdata(PlasmaIdx::ux_half_step)[midx] =
                         ptd.rdata(PlasmaIdx::ux_half_step)[pidx] * ux_arr[imirror];
                     ptd.rdata(PlasmaIdx::uy_half_step)[midx] =
                         ptd.rdata(PlasmaIdx::uy_half_step)[pidx] * uy_arr[imirror];
-                    ptd.rdata(PlasmaIdx::psi_half_step)[midx] =
-                        ptd.rdata(PlasmaIdx::psi_half_step)[pidx];
+                    ptd.rdata(PlasmaIdx::uz_half_step)[midx] =
+                        ptd.rdata(PlasmaIdx::uz_half_step)[pidx];
 #ifdef HIPACE_USE_AB5_PUSH
 #ifdef AMREX_USE_GPU
 #pragma unroll

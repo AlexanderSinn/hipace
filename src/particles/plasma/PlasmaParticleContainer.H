@@ -18,18 +18,53 @@
 #include <AMReX_AmrCore.H>
 #include <map>
 
+// gamma
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real plasma_gamma (amrex::Real ux, amrex::Real uy, amrex::Real uz, amrex::Real Aabssq) {
+    using namespace amrex::literals;
+    return std::sqrt(1._rt + ux*ux + uy*uy + uz*uz + 0.5_rt*Aabssq);
+}
+
+// normalized psi + 1
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real plasma_psi (amrex::Real gamma, amrex::Real uz) {
+    return gamma - uz;
+}
+
+// 1 / gamma
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real plasma_gamma_inv (amrex::Real ux, amrex::Real uy, amrex::Real uz, amrex::Real Aabssq) {
+    using namespace amrex::literals;
+    return amrex::Math::rsqrt(1._rt + ux*ux + uy*uy + uz*uz + 0.5_rt*Aabssq);
+}
+
+// gamma / (normalized psi + 1)
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real plasma_gamma_psi (amrex::Real gamma_inv, amrex::Real uz) {
+    using namespace amrex::literals;
+    return 1._rt / (1._rt - gamma_inv * uz);
+}
+
+// 1 / (normalized psi + 1)
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+amrex::Real plasma_psi_inv (amrex::Real gamma_inv, amrex::Real gamma_psi) {
+    using namespace amrex::literals;
+    return gamma_inv * gamma_psi;
+}
+
 /** \brief Map names and indices for plasma particles attributes (SoA data) */
 struct PlasmaIdx
 {
     enum {
         x=0, y,             // position
         w,                  // weight, this will be returned by pos(2)
-        ux, uy,             // momentum
+        ux, uy, uz,         // momentum
         psi,                // pseudo-potential at the particle position. ATTENTION what is stored is actually normalized psi+1
         x_prev, y_prev,     // positions on the last non-temp slice
 
         ux_half_step,       // momentum half a step behind the current slice for leapfrog pusher
         uy_half_step,       // at the same step for AB5 pusher
+        uz_half_step,
         psi_half_step,      // never effected by temp slice
 #ifdef HIPACE_USE_AB5_PUSH
         Fx1, Fx2, Fx3, Fx4, Fx5,             // AB5 force terms

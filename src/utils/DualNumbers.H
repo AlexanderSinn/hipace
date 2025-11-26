@@ -9,6 +9,7 @@
 #define HIPACE_DUALNUMBERS_H_
 
 #include <AMReX_Config.H>
+#include <AMReX_Math.H>
 
 struct DualNumber {
     amrex::Real value;
@@ -39,6 +40,16 @@ struct DualNumber {
     friend AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE constexpr
     DualNumber operator/ (const DualNumber& a, const DualNumber& b) {
         return {a.value / b.value, (a.epsilon * b.value - a.value * b.epsilon)/(b.value * b.value)};
+    }
+
+    static amrex::Real rsqrt (amrex::Real a) {
+        return amrex::Math::rsqrt(a);
+    }
+
+    static DualNumber rsqrt (const DualNumber& a) {
+        using namespace amrex::literals;
+        const amrex::Real x = amrex::Math::rsqrt(a.value);
+        return {x, -0.5_rt*x*x*x*a.epsilon};
     }
 };
 

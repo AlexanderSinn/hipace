@@ -140,7 +140,7 @@ AdvancePlasmaParticles (PlasmaParticleContainer& plasma, const Fields & fields,
 
                     amrex::Real ux = ptd.rdata(PlasmaIdx::ux_half_step)[ip];
                     amrex::Real uy = ptd.rdata(PlasmaIdx::uy_half_step)[ip];
-                    amrex::Real psi = ptd.rdata(PlasmaIdx::psi_half_step)[ip];
+                    amrex::Real uz = ptd.rdata(PlasmaIdx::uz_half_step)[ip];
 
                     // full push in momentum
                     // from t-1/2 to t+1/2
@@ -182,7 +182,7 @@ AdvancePlasmaParticles (PlasmaParticleContainer& plasma, const Fields & fields,
                         // the next push always starts from these
                         ptd.rdata(PlasmaIdx::ux_half_step)[ip] = ux;
                         ptd.rdata(PlasmaIdx::uy_half_step)[ip] = uy;
-                        ptd.rdata(PlasmaIdx::psi_half_step)[ip] = psi;
+                        ptd.rdata(PlasmaIdx::uz_half_step)[ip] = uz;
                         ptd.rdata(PlasmaIdx::x_prev)[ip] = xp;
                         ptd.rdata(PlasmaIdx::y_prev)[ip] = yp;
                     }
@@ -214,11 +214,11 @@ AdvancePlasmaParticles (PlasmaParticleContainer& plasma, const Fields & fields,
                     }
                     ptd.rdata(PlasmaIdx::ux)[ip] = ux;
                     ptd.rdata(PlasmaIdx::uy)[ip] = uy;
-                    ptd.rdata(PlasmaIdx::psi)[ip] = psi;
+                    ptd.rdata(PlasmaIdx::uz)[ip] = uz;
 #else
                     amrex::Real ux = ptd.rdata(PlasmaIdx::ux_half_step)[ip];
                     amrex::Real uy = ptd.rdata(PlasmaIdx::uy_half_step)[ip];
-                    amrex::Real psi = ptd.rdata(PlasmaIdx::psi_half_step)[ip];
+                    amrex::Real uz = ptd.rdata(PlasmaIdx::uz_half_step)[ip];
                     const amrex::Real psi_inv = 1._rt/psi;
 
                     auto [dz_ux, dz_uy, dz_psi] = PlasmaMomentumPush(
@@ -259,14 +259,14 @@ AdvancePlasmaParticles (PlasmaParticleContainer& plasma, const Fields & fields,
                         // the next push always starts from these
                         ptd.rdata(PlasmaIdx::ux_half_step)[ip] = ux;
                         ptd.rdata(PlasmaIdx::uy_half_step)[ip] = uy;
-                        ptd.rdata(PlasmaIdx::psi_half_step)[ip] = psi;
+                        ptd.rdata(PlasmaIdx::uz_half_step)[ip] = uz;
                         ptd.rdata(PlasmaIdx::x_prev)[ip] = xp;
                         ptd.rdata(PlasmaIdx::y_prev)[ip] = yp;
                     }
 
                     ptd.rdata(PlasmaIdx::ux)[ip] = ux;
                     ptd.rdata(PlasmaIdx::uy)[ip] = uy;
-                    ptd.rdata(PlasmaIdx::psi)[ip] = psi;
+                    ptd.rdata(PlasmaIdx::uz)[ip] = uz;
 #endif
                 } // loop over subcycles
             });

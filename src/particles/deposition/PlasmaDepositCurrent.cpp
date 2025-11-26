@@ -166,11 +166,11 @@ DepositCurrent (PlasmaParticleContainer& plasma, Fields & fields,
                                   auto can_ionize,
                                   auto use_laser) noexcept
             {
-                const amrex::Real psi_inv = 1._rt/ptd.rdata(PlasmaIdx::psi)[ip];
                 const amrex::Real xp = ptd.pos(0, ip);
                 const amrex::Real yp = ptd.pos(1, ip);
-                const amrex::Real vx = ptd.rdata(PlasmaIdx::ux)[ip] * psi_inv;
-                const amrex::Real vy = ptd.rdata(PlasmaIdx::uy)[ip] * psi_inv;
+                const amrex::Real ux = ptd.rdata(PlasmaIdx::ux)[ip];
+                const amrex::Real uy = ptd.rdata(PlasmaIdx::uy)[ip];
+                const amrex::Real uz = ptd.rdata(PlasmaIdx::uz)[ip];
 
                 // calculate charge of the plasma particles
                 amrex::Real q_invvol = charge_invvol * ptd.rdata(PlasmaIdx::w)[ip];
@@ -193,13 +193,12 @@ DepositCurrent (PlasmaParticleContainer& plasma, Fields & fields,
                     Aabssqp *= laser_norm_ion;
                 }
 
-                // calculate gamma/psi for plasma particles
-                const amrex::Real gamma_psi = 0.5_rt * (
-                    (1._rt + 0.5_rt * Aabssqp) * psi_inv * psi_inv
-                    + vx * vx
-                    + vy * vy
-                    + 1._rt
-                );
+                const amrex::Real gamma_inv = plasma_gamma_inv(ux, uy, uz, Aabssqp);
+                const amrex::Real gamma_psi = plasma_gamma_psi(gamma_inv, uz);
+                const amrex::Real psi_inv = plasma_psi_inv(gamma_inv, gamma_psi);
+                const amrex::Real vx = ux * psi_inv;
+                const amrex::Real vy = uy * psi_inv;
+                const amrex::Real vz = uz * psi_inv;
 
                 if (gamma_psi < 0.0_rt || gamma_psi > max_qsa_weighting_factor || psi_inv < 0.0_rt)
                 {
@@ -228,7 +227,7 @@ DepositCurrent (PlasmaParticleContainer& plasma, Fields & fields,
                         // wqx, wqy wqz are particle current in each direction
                         const amrex::Real wqx     = charge_density * clight * vx;
                         const amrex::Real wqy     = charge_density * clight * vy;
-                        const amrex::Real wqz     = charge_density * clight * (gamma_psi-1._rt);
+                        const amrex::Real wqz     = charge_density * clight * vz;
                         const amrex::Real wq      = charge_density * gamma_psi;
                         const amrex::Real wchi    = charge_density * q_mu0_mass_ratio * psi_inv;
                         const amrex::Real wrhomjz = charge_density;

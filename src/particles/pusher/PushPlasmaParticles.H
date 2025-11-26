@@ -17,6 +17,13 @@ struct PlasmaMomentumDerivative {
     T dz_psi;
 };
 
+template<class T>
+struct PlasmaMomentumDerivative2 {
+    T dz_ux;
+    T dz_uy;
+    T dz_uz;
+};
+
 /** \brief Find the derivative of the Plasma momentum.
  * This function can be used with dual numbers to find the second derivative.
  *
@@ -70,6 +77,41 @@ PlasmaMomentumDerivative<T> PlasmaMomentumPush (
                          (( ux * ExmBy_ci + uy * EypBx_ci ) * psi_inv - Ez_ci ));
 
     return {dz_ux, dz_uy, dz_psi};
+}
+
+template<class T>
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+PlasmaMomentumDerivative2<T> PlasmaMomentumPush2 (
+    const T& ux,
+    const T& uy,
+    const T& uz,
+    amrex::Real ExmBy_ci,
+    amrex::Real EypBx_ci,
+    amrex::Real Ez_ci,
+    amrex::Real Bx,
+    amrex::Real By,
+    amrex::Real Bz,
+    amrex::Real Aabssq_norm,
+    amrex::Real AabssqDx_norm,
+    amrex::Real AabssqDy_norm,
+    amrex::Real charge_mass_clight_ratio)
+{
+    using namespace amrex::literals;
+
+    const T gamma_inv = DualNumber::rsqrt(1._rt + 0.5_rt * Aabssq_norm + ux*ux + uy*uy + uz*uz);
+    const T gamma_psi = 1._rt / (1._rt - gamma_inv * uz);
+    const T psi_inv = gamma_inv * gamma_psi;
+
+    const T dz_ux = (charge_mass_clight_ratio * (gamma_psi * ExmBy_ci
+                    + By + ( uy * Bz ) * psi_inv) - AabssqDx_norm * psi_inv);
+
+    const T dz_uy = (charge_mass_clight_ratio * (gamma_psi * EypBx_ci
+                    - Bx - ( ux * Bz ) * psi_inv) - AabssqDy_norm * psi_inv);
+
+    const T dz_uz = (charge_mass_clight_ratio * (gamma_psi * Ez_ci
+                    + ( ux * By - uy * Bx ) * psi_inv));
+
+    return {dz_ux, dz_uy, dz_uz};
 }
 
 #endif //  PUSHPLASMAPARTICLES_H_

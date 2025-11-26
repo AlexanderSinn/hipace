@@ -147,11 +147,11 @@ ExplicitDeposition (PlasmaParticleContainer& plasma, Fields& fields,
                                   auto can_ionize,
                                   auto use_laser) noexcept
             {
-                const amrex::Real psi_inv = 1._rt/ptd.rdata(PlasmaIdx::psi)[ip];
                 const amrex::Real xp = ptd.pos(0, ip);
                 const amrex::Real yp = ptd.pos(1, ip);
-                const amrex::Real vx = ptd.rdata(PlasmaIdx::ux)[ip] * psi_inv;
-                const amrex::Real vy = ptd.rdata(PlasmaIdx::uy)[ip] * psi_inv;
+                const amrex::Real ux = ptd.rdata(PlasmaIdx::ux)[ip];
+                const amrex::Real uy = ptd.rdata(PlasmaIdx::uy)[ip];
+                const amrex::Real uz = ptd.rdata(PlasmaIdx::uz)[ip];
 
                 // Rename variable for NVCC lambda capture to work
                 amrex::Real q_invvol_mu0 = charge_invvol_mu0;
@@ -175,13 +175,11 @@ ExplicitDeposition (PlasmaParticleContainer& plasma, Fields& fields,
                     Aabssqp *= laser_fac * q_mass_ratio * q_mass_ratio;
                 }
 
-                // calculate gamma/psi for plasma particles
-                const amrex::Real gamma_psi = 0.5_rt * (
-                    (1._rt + 0.5_rt * Aabssqp) * psi_inv * psi_inv
-                    + vx * vx
-                    + vy * vy
-                    + 1._rt
-                );
+                const amrex::Real gamma_inv = plasma_gamma_inv(ux, uy, uz, Aabssqp);
+                const amrex::Real gamma_psi = plasma_gamma_psi(gamma_inv, uz);
+                const amrex::Real psi_inv = plasma_psi_inv(gamma_inv, gamma_psi);
+                const amrex::Real vx = ux * psi_inv;
+                const amrex::Real vy = uy * psi_inv;
 
 #ifdef AMREX_USE_GPU
 #pragma unroll
