@@ -623,6 +623,10 @@ MultiLaser::AdvanceSliceMG (amrex::Real dt, int step)
                 }
                 rhs_mg_arr(i,j,0) = rhs.real();
                 rhs_mg_arr(i,j,1) = rhs.imag();
+                arr(i, j, rhs_r) = rhs.real();
+                arr(i, j, rhs_i) = rhs.imag();
+                arr(i, j, acf_r) = acoeff_real_arr(i,j,0);
+                arr(i, j, acf_i) = acoeff_imag_scalar;
             });
     }
 
@@ -786,6 +790,8 @@ MultiLaser::AdvanceSliceFFT (const amrex::Real dt, int step)
                         + ( -3._rt/(c*dt*dz) + 2._rt*I*djn/(c*dt) + 2._rt/(c*c*dt*dt) + I*2._rt*k0/(c*dt) ) * anm1j00;
                 }
                 rhs_arr(i,j,0) = rhs;
+                arr(i, j, rhs_r) = rhs.real();
+                arr(i, j, rhs_i) = rhs.imag();
             });
 
         // Transform rhs to Fourier space
@@ -808,6 +814,8 @@ MultiLaser::AdvanceSliceFFT (const amrex::Real dt, int step)
                 const Complex inv_k2a = abs(kx*kx + ky*ky + acoeff) > 0. ?
                     1._rt/(kx*kx + ky*ky + acoeff) : 0.;
                 rhs_fourier_arr(i,j) *= -inv_k2a;
+                arr(i, j, WhichLaserSlice::acf_r) = acoeff.real();
+                arr(i, j, WhichLaserSlice::acf_i) = acoeff.imag();
             });
 
         // Transform rhs to Fourier space to get solution in sol

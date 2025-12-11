@@ -36,8 +36,11 @@ Laser::ReadParameters (const amrex::Geometry& laser_geom_3D)
         queryWithParser(pp, "openPMD_laser_name", m_file_envelope_name);
         queryWithParser(pp, "iteration", m_file_num_iteration);
         if (Hipace::HeadRank()) {
+            std::cout << "Resize begin" << std::endl;
             m_F_input_file.resize(laser_geom_3D.Domain(), 2, amrex::The_Pinned_Arena());
+            std::cout << "Resize end" << std::endl;
             GetEnvelopeFromFileHelper(laser_geom_3D);
+            std::cout << "GetEnvelopeFromFileHelper end" << std::endl;
         }
 
         // m_init_lambda0 is only read by the HeadRank, so we need to communicate it
@@ -101,7 +104,11 @@ Laser::GetEnvelopeFromFileHelper (amrex::Geometry laser_geom_3D) {
     openPMD::Datatype input_type = openPMD::Datatype::INT;
     {
         // Check what kind of Datatype is used in the Laser file
+        std::cout << "openPMD::Series open begin" << std::endl;
+
         auto series = openPMD::Series( m_input_file_path , openPMD::Access::READ_ONLY );
+
+        std::cout << "openPMD::Series open end" << std::endl;
 
         AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
             series.iterations.contains(m_file_num_iteration),
@@ -169,6 +176,8 @@ Laser::GetEnvelopeFromFileHelper (amrex::Geometry laser_geom_3D) {
         input_type = mesh[openPMD::RecordComponent::SCALAR].getDatatype();
     }
 
+    std::cout << "GetEnvelopeFromFile begin" << std::endl;
+
     if (input_type == openPMD::Datatype::CFLOAT) {
         GetEnvelopeFromFile<std::complex<float>>(laser_geom_3D);
     } else if (input_type == openPMD::Datatype::CDOUBLE) {
@@ -176,6 +185,7 @@ Laser::GetEnvelopeFromFileHelper (amrex::Geometry laser_geom_3D) {
     } else {
         amrex::Abort("Unknown Datatype used in Laser input file. Must use CDOUBLE or CFLOAT\n");
     }
+    std::cout << "GetEnvelopeFromFile end" << std::endl;
 #else
     amrex::Abort("loading a laser envelope from an external file requires openPMD support: "
                  "Add HiPACE_OPENPMD=ON when compiling HiPACE++.\n");
@@ -210,7 +220,12 @@ Laser::GetEnvelopeFromFile (amrex::Geometry laser_geom_3D) {
         amrex::Abort("Incorrect axis labels in laser file, must be either tyx, zyx or tr");
     }
 
+    std::cout << "loadChunk begin" << std::endl;
+
     const std::shared_ptr<input_type> data = laser_comp.loadChunk<input_type>();
+
+    std::cout << "loadChunk end" << std::endl;
+
     auto extent = laser_comp.getExtent();
     double unitSI = laser_comp.unitSI();
 
@@ -228,7 +243,11 @@ Laser::GetEnvelopeFromFile (amrex::Geometry laser_geom_3D) {
     //hipace: xyt in Fortran order
     amrex::Array4<amrex::Real> laser_arr = m_F_input_file.array();
 
+    std::cout << "flush begin" << std::endl;
+
     series.flush();
+
+    std::cout << "flush end" << std::endl;
 
     constexpr int interp_order_xy = 1;
     const amrex::Real dx = laser_geom_3D.CellSize(Direction::x);
@@ -241,6 +260,8 @@ Laser::GetEnvelopeFromFile (amrex::Geometry laser_geom_3D) {
     const int imin = domain.smallEnd(0);
     const int jmin = domain.smallEnd(1);
     const int kmin = domain.smallEnd(2);
+
+    std::cout << "interp begin" << std::endl;
 
     if (m_file_geometry == "xyt") {
         // Calculate the min and max of the grid from laser file
@@ -402,6 +423,8 @@ Laser::GetEnvelopeFromFile (amrex::Geometry laser_geom_3D) {
             }
         } // End of 3 loops (1 per dimension) over laser array from simulation
     } // End if statement over file laser geometry (rt or xyt)
+
+    std::cout << "interp end" << std::endl;
 #else
     amrex::Abort("loading a laser envelope from an external file requires openPMD support: "
                  "Add HiPACE_OPENPMD=ON when compiling HiPACE++.\n");

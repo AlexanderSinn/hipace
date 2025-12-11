@@ -177,6 +177,8 @@ Diagnostic::Initialize (int nlev, bool use_laser) {
         geometry_name_to_geom_type.emplace(geom_name, FieldDiagnosticData::geom_type::laser);
         geometry_name_to_level.emplace(geom_name, 0);
         geometry_name_to_output_comps_map[geom_name]["laserEnvelope"] = WhichLaserSlice::n00j00_r;
+        geometry_name_to_output_comps_map[geom_name]["laserRhs"] = WhichLaserSlice::rhs_r;
+        geometry_name_to_output_comps_map[geom_name]["laserAcf"] = WhichLaserSlice::acf_r;
         // real=chi, imag=chi_initial
         geometry_name_to_output_comps_map[geom_name]["laserChi"] = WhichLaserSlice::chi;
         // add derived diagnostics for |a^2|
