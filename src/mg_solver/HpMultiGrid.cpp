@@ -448,17 +448,14 @@ void gsrb_shared (Box const& box, Array4<Real> const& phi_out, Array4<Real const
     int const jhi_loop = loop_box.bigEnd(1);
     const int num_blocks_x = (loop_box.length(0) + final_tilesize_x - 1)/final_tilesize_x;
     const int num_blocks_y = (loop_box.length(1) + final_tilesize_y - 1)/final_tilesize_y;
-    amrex::Math::FastDivmodU64 num_blocks_divmod {static_cast<std::uint64_t>(num_blocks_x)};
 
-    amrex::launch<num_threads>(num_blocks_x*num_blocks_y, amrex::Gpu::gpuStream(),
-        [=] AMREX_GPU_DEVICE() noexcept
+    amrex::LaunchRaw<num_threads>(amrex::IntVectND<2>{num_blocks_x, num_blocks_y},
+        [=] AMREX_GPU_DEVICE (auto lh) noexcept
         {
             // allocate static shared memory
             __shared__ Real phi_ptr[num_cells_in_tile];
 
-            std::uint64_t remainder = 0;
-            const int iblock_y = num_blocks_divmod.divmod(remainder, blockIdx.x);
-            const int iblock_x = remainder;
+            const auto [iblock_x, iblock_y] = lh.blockIdxND();
 
             const int tile_begin_x = iblock_x * final_tilesize_x - edge_offset - 1 + ilo_loop;
             const int tile_begin_y = iblock_y * final_tilesize_y - edge_offset - 1 + jlo_loop;
@@ -472,12 +469,13 @@ void gsrb_shared (Box const& box, Array4<Real> const& phi_out, Array4<Real const
 
             if (zero_init) {
                 // initialize shared memory to zero
-                for (int s = threadIdx.x; s < num_cells_in_tile; s+=blockDim.x) {
+                for (int s = lh.threadIdx1D(); s < num_cells_in_tile; s += lh.blockDim1D()) {
                     phi_ptr[s] = Real(0.);
                 }
             } else {
                 // initialize shared memory to phi_in inside the domain, outside zero
-                for (int s = threadIdx.x; s < tilesize_array_x*tilesize_array_y; s+=blockDim.x) {
+                for (int s = lh.threadIdx1D(); s < tilesize_array_x*tilesize_array_y;
+                     s += lh.blockDim1D()) {
                     int sy = s / tilesize_array_x;
                     int sx = s - sy * tilesize_array_x;
                     sx += tile_begin_x;
@@ -495,8 +493,7 @@ void gsrb_shared (Box const& box, Array4<Real> const& phi_out, Array4<Real const
                 }
             }
 
-            int ithread_y = threadIdx.x / tilesize_x;
-            const int ithread_x = threadIdx.x - ithread_y * tilesize_x;
+            auto [ithread_x, ithread_y] = lh.template threadIdxND<tilesize_x, tilesize_y / 2>();
             ithread_y *= 2;
 
             const int i = tile_begin_x + 1 + ithread_x;
@@ -518,7 +515,7 @@ void gsrb_shared (Box const& box, Array4<Real> const& phi_out, Array4<Real const
                 }
             }
 
-            __syncthreads();
+            lh.syncthreads();
 
             for (int icolor=0; icolor<niter; ++icolor) {
                 // Do 4 Gauss–Seidel iterations.
@@ -546,7 +543,7 @@ void gsrb_shared (Box const& box, Array4<Real> const& phi_out, Array4<Real const
                             rhs_loc[0], facx, facy);
                     }
                 }
-                __syncthreads();
+                lh.syncthreads();
             }
 
             for (int nj=0; nj<=1; ++nj) {
