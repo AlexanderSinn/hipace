@@ -29,8 +29,10 @@
 struct EnforceBC
 {
     ParticleBoundary::type m_particle_boundary;
-    amrex::GpuArray<amrex::Real, 2> m_plo;
-    amrex::GpuArray<amrex::Real, 2> m_phi;
+    amrex::GpuArray<amrex::Real, 2> m_plo {};
+    amrex::GpuArray<amrex::Real, 2> m_phi {};
+    amrex::GpuArray<amrex::Real, 2> m_mod_base {};
+    amrex::GpuArray<amrex::Real, 2> m_mod_base_inv {};
 
     /** Constructor.
      */
@@ -41,6 +43,24 @@ struct EnforceBC
         m_plo[1] = Hipace::m_boundary_particle_lo[1];
         m_phi[0] = Hipace::m_boundary_particle_hi[0];
         m_phi[1] = Hipace::m_boundary_particle_hi[1];
+
+        if (m_particle_boundary == ParticleBoundary::Reflecting) {
+            m_mod_base[0] = amrex::Real(2) * (m_phi[0] - m_plo[0]);
+            m_mod_base[1] = amrex::Real(2) * (m_phi[1] - m_plo[1]);
+            m_mod_base_inv[0] = 1 / m_mod_base[0];
+            m_mod_base_inv[1] = 1 / m_mod_base[1];
+        } else if (m_particle_boundary == ParticleBoundary::Periodic) {
+            m_mod_base[0] = m_phi[0] - m_plo[0];
+            m_mod_base[1] = m_phi[1] - m_plo[1];
+            m_mod_base_inv[0] = 1 / m_mod_base[0];
+            m_mod_base_inv[1] = 1 / m_mod_base[1];
+        }
+    }
+
+    AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+    static
+    amrex::Real fmodulo (amrex::Real x, amrex::Real base, amrex::Real base_inv) {
+        return x - std::floor(x * base_inv) * base;
     }
 
     /** \brief enforces the boundary condition to the particle
@@ -61,31 +81,21 @@ struct EnforceBC
     {
         bool invalid = false;
         if (x < m_plo[0] || y < m_plo[1] || x > m_phi[0] || y > m_phi[1]) {
-            const amrex::Real len_x = m_phi[0] - m_plo[0];
-            const amrex::Real len_y = m_phi[1] - m_plo[1];
             if (m_particle_boundary == ParticleBoundary::Reflecting) {
-                x = std::fmod(x - m_plo[0], 2*len_x);
-                if (x < 0) x += 2*len_x;
-                x += m_plo[0];
+                x = fmodulo(x - m_plo[0], m_mod_base[0], m_mod_base_inv[0]) + m_plo[0];
                 if (x > m_phi[0]) {
                     x = 2*m_phi[0] - x;
                     ux = -ux;
                 }
-                y = std::fmod(y - m_plo[1], 2*len_y);
-                if (y < 0) y += 2*len_y;
-                y += m_plo[1];
+                y = fmodulo(y - m_plo[1], m_mod_base[1], m_mod_base_inv[1]) + m_plo[1];
                 if (y > m_phi[1]) {
                     y = 2*m_phi[1] - y;
                     uy = -uy;
                 }
                 invalid = false;
             } else if (m_particle_boundary == ParticleBoundary::Periodic) {
-                x = std::fmod(x - m_plo[0], len_x);
-                if (x < 0) x += len_x;
-                x += m_plo[0];
-                y = std::fmod(y - m_plo[1], len_y);
-                if (y < 0) y += len_y;
-                y += m_plo[1];
+                x = fmodulo(x - m_plo[0], m_mod_base[0], m_mod_base_inv[0]) + m_plo[0];
+                y = fmodulo(y - m_plo[1], m_mod_base[1], m_mod_base_inv[1]) + m_plo[1];
                 invalid = false;
             } else {
                 ptd.rdata(w_index)[ip] = amrex::Real(0);
