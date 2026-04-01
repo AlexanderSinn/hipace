@@ -360,6 +360,9 @@ private:
     amrex::Vector<std::string> m_collision_names2;
     amrex::Vector<Collision> m_all_collisions2;
 
+    amrex::Vector<std::string> m_collision_names2;
+    amrex::Vector<Collision> m_all_collisions2;
+
     void InitDiagnostics (const int step, const amrex::Real time, const bool is_last_step);
     void FillFieldDiagnostics (const int current_N_level, int islice);
     void FillBeamDiagnostics (const int step, const amrex::Real time, const bool is_last_step);
