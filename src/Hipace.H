@@ -357,6 +357,8 @@ private:
     std::vector<std::string> m_collision_names;
     /** Vector of binary collisions */
     amrex::Vector< CoulombCollision > m_all_collisions;
+    amrex::Vector<std::string> m_collision_names2;
+    amrex::Vector<Collision> m_all_collisions2;
 
     amrex::Vector<std::string> m_collision_names2;
     amrex::Vector<Collision> m_all_collisions2;
