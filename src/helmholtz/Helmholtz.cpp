@@ -42,7 +42,14 @@ Helmholtz::ReadParameters ()
     }
     queryWithParser(pp, "interp_order", m_interp_order);
     AMREX_ALWAYS_ASSERT(m_interp_order <= 3 && m_interp_order >= 0);
-    queryWithParser(pp, "insitu_period", m_insitu_period);
+    queryWithParser(pp, "insitu_period", m_insitu_period.m_func_str);
+    m_insitu_period.compile();
+    m_insitu_file_prefix = Hipace::m_output_folder + "/insitu";
+    const bool set_file_prefix = queryWithParser(pp, "insitu_file_prefix", m_insitu_file_prefix);
+    if (set_file_prefix) {
+        amrex::Print() <<
+            "It is recommended to use hipace.output_folder instead of lasers.insitu_file_prefix\n";
+    }
     queryWithParser(pp, "centered_dz", m_centered_dz);
     queryWithParser(pp, "add_dx_jz", m_add_dx_jz);
     queryWithParser(pp, "add_dz_jx", m_add_dz_jx);
@@ -55,7 +62,7 @@ Helmholtz::ReadParameters ()
     m_profile_real = makeFunctionWithParser<3>( profile_real_str, m_parser_lr, {"x", "y", "z"});
     m_profile_imag = makeFunctionWithParser<3>( profile_imag_str, m_parser_li, {"x", "y", "z"});
 
-    queryWithParser(pp, "insitu_file_prefix", m_insitu_file_prefix);
+    // queryWithParser(pp, "insitu_file_prefix", m_insitu_file_prefix);
 }
 
 void
@@ -153,7 +160,7 @@ Helmholtz::InitData ()
         m_backward_fft.SetBuffers(m_rhs_fourier.dataPtr(), m_sol.dataPtr(), m_fft_work_area.dataPtr());
     }
 
-    if (m_insitu_period > 0) {
+    if (m_insitu_period.isNonZero()) {
 #ifdef HIPACE_USE_OPENPMD
         AMREX_ALWAYS_ASSERT_WITH_MESSAGE(m_insitu_file_prefix !=
             Hipace::GetInstance().m_openpmd_writer.m_file_prefix,
@@ -763,11 +770,10 @@ Helmholtz::InitHelmholtzSlice (const int islice, const int comp)
 }
 
 void
-Helmholtz::InSituComputeDiags (int step, amrex::Real time, int islice,
-                                int max_step, amrex::Real max_time)
+Helmholtz::InSituComputeDiags (int step, int islice, amrex::Real time, bool is_last_step)
 {
     if (!UseHelmholtz(islice)) return;
-    if (!utils::doDiagnostics(m_insitu_period, step, max_step, time, max_time)) return;
+    if (!m_insitu_period.doDiagnostics(step, time, is_last_step)) return;
     HIPACE_PROFILE("Helmholtz::InSituComputeDiags()");
 
     using namespace amrex::literals;
@@ -851,10 +857,10 @@ Helmholtz::InSituComputeDiags (int step, amrex::Real time, int islice,
 }
 
 void
-Helmholtz::InSituWriteToFile (int step, amrex::Real time, int max_step, amrex::Real max_time)
+Helmholtz::InSituWriteToFile (int step, amrex::Real time, bool is_last_step)
 {
     if (!m_use_helmholtz) return;
-    if (!utils::doDiagnostics(m_insitu_period, step, max_step, time, max_time)) return;
+    if (!m_insitu_period.doDiagnostics(step, time, is_last_step)) return;
     HIPACE_PROFILE("Helmholtz::InSituWriteToFile()");
 
 #ifdef HIPACE_USE_OPENPMD

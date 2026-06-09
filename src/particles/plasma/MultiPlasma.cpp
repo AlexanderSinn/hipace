@@ -47,7 +47,13 @@ MultiPlasma::InitData (amrex::Vector<amrex::BoxArray> slice_ba,
         // make it think there is only level 0
         plasma.SetParGDB(slice_gm[0], slice_dm[0], slice_ba[0]);
         plasma.InitData(gm);
+    }
+}
 
+void
+MultiPlasma::InitIonization (amrex::Vector<amrex::Geometry> gm)
+{
+    for (auto& plasma : m_all_plasmas) {
         if(plasma.m_can_ionize) {
             for (int i=0; i<m_names.size(); ++i) {
                 if(m_names[i] == plasma.m_product_name) {
@@ -78,13 +84,21 @@ MultiPlasma::maxChargeDensity (amrex::Real z)
 void
 MultiPlasma::DepositCurrent (
     Fields & fields, int which_slice,
-    bool deposit_jx_jy, bool deposit_jz, bool deposit_rho, bool deposit_chi, bool deposit_rhomjz,
+    bool deposit_jx_jy, bool deposit_jz, bool deposit_rho, bool deposit_chi, bool deposit_rhomjz, bool deposit_n,
     amrex::Vector<amrex::Geometry> const& gm, int const lev)
 {
     for (int i=0; i<m_nplasmas; i++) {
         ::DepositCurrent(m_all_plasmas[i], fields, which_slice,
-                         deposit_jx_jy, deposit_jz, deposit_rho, deposit_chi, deposit_rhomjz,
-                         gm, lev);
+                         deposit_jx_jy, deposit_jz, deposit_rho, deposit_chi, deposit_rhomjz, deposit_n,
+                         gm, lev, -1);
+        if (m_all_plasmas[i].m_max_ion_lev == 0) continue;
+        if (deposit_n && Hipace::m_deposit_n_ion_levels) {
+            for (int ion_lev = 0; ion_lev <= m_all_plasmas[i].m_max_ion_lev; ++ion_lev) {
+                ::DepositCurrent(m_all_plasmas[i], fields, which_slice,
+                    false, false, false, false, false, true,
+                    gm, lev, ion_lev);
+            }
+        }
     }
 }
 
@@ -128,7 +142,7 @@ MultiPlasma::DepositNeutralizingBackground (
         if (m_all_plasmas[i].m_neutralize_background) {
             // current of ions is zero, so they are not deposited.
             ::DepositCurrent(m_all_plasmas[i], fields, which_slice, false,
-                             false, false, false, true, gm, lev);
+                             false, false, false, true, false, gm, lev);
         }
     }
 }
@@ -179,12 +193,10 @@ MultiPlasma::TagByLevel (const int current_N_level, amrex::Vector<amrex::Geometr
 }
 
 void
-MultiPlasma::InSituComputeDiags (int step, int islice, int max_step,
-                                amrex::Real physical_time, amrex::Real max_time)
+MultiPlasma::InSituComputeDiags (int step, int islice, amrex::Real time, bool is_last_step)
 {
     for (auto& plasma : m_all_plasmas) {
-        if (utils::doDiagnostics(plasma.m_insitu_period, step,
-                            max_step, physical_time, max_time)) {
+        if (plasma.m_insitu_period.doDiagnostics(step, time, is_last_step)) {
             plasma.InSituComputeDiags(islice);
         }
     }
@@ -192,11 +204,10 @@ MultiPlasma::InSituComputeDiags (int step, int islice, int max_step,
 
 void
 MultiPlasma::InSituWriteToFile (int step, amrex::Real time, const amrex::Geometry& geom,
-                                int max_step, amrex::Real max_time)
+                                bool is_last_step)
 {
     for (auto& plasma : m_all_plasmas) {
-        if (utils::doDiagnostics(plasma.m_insitu_period, step,
-                            max_step, time, max_time)) {
+        if (plasma.m_insitu_period.doDiagnostics(step, time, is_last_step)) {
             plasma.InSituWriteToFile(step, time, geom);
         }
     }

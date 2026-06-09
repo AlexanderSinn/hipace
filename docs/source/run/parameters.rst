@@ -170,7 +170,14 @@ General parameters
     Note that this will include some default AMReX parameters.
 
 * ``hipace.initial_time`` (`float`) optional (default `0.`)
-    Initial time of the simulation. Can be used to start at a chosen location in a custom density profile or to overwrite the initial time set e.g. with the ``from_file`` option of beam initialization.
+    Initial time of the simulation. Can be used to start at a chosen location
+    in a custom density profile or to overwrite the initial time set e.g.
+    with the ``from_file`` option of beam initialization.
+
+* ``hipace.initial_step`` (`integer`) optional (default `0`)
+    Initial step index of the simulation. Can be used to offset the iteration number of diagnostic
+    output as well as the output period calculation when restarting a simulation.
+    Should be used together with with ``hipace.initial_time``.
 
 * ``hipace.grid_external_fields(x,y,z,t)`` (5 `float`) optional (default `0. 0. 0. 0. 0.`)
     External fields applied to the field grid as a function of x, y, z and t.
@@ -180,6 +187,10 @@ General parameters
     :math:`\frac{d}{dx} \Psi = - (E_x - c B_y)` and :math:`\frac{d}{dy} \Psi = - (E_y + c B_x)`.
     Note that z refers to the location of the beam particle inside the moving frame of reference
     (zeta) and t to the physical time of the current time step.
+
+* ``hipace.ignore_noncritical_warnings`` (`bool`) optional (default `0`)
+    Don't crash the simulation from assertions that check for suboptimal input parameters
+    but are not needed for correctness.
 
 Geometry
 --------
@@ -341,11 +352,16 @@ The default is to use the explicit solver. **We strongly recommend to use the ex
     Which solver to use.
     Possible values: ``explicit`` and ``predictor-corrector``.
 
-* ``fields.poisson_solver`` (`string`) optional (default CPU: `FFTDirichletDirect`, GPU: `FFTDirichletQuick` or `FFTDirichletFast`)
+* ``fields.poisson_solver`` (`string`) optional (default CPU: `FFTDirichletDirectEven` or `FFTDirichletDirectOdd`, GPU: `FFTDirichletQuick` or `FFTDirichletFast`)
     Which Poisson solver to use for ``Psi``, ``Ez`` and ``Bz``. The ``predictor-corrector`` BxBy
     solver also uses this poisson solver for ``Bx`` and ``By`` internally. Available solvers are:
 
-      * ``FFTDirichletDirect`` Use the discrete sine transformation that is directly implemented
+      * ``FFTDirichletDirectEven`` Use the discrete sine transformation that is directly implemented
+        by FFTW to solve the Poisson equation with Dirichlet boundary conditions.
+        This option is only available when compiling for CPUs with FFTW.
+        Preferred resolution: :math:`2^N`.
+
+      * ``FFTDirichletDirectOdd`` Use the discrete sine transformation that is directly implemented
         by FFTW to solve the Poisson equation with Dirichlet boundary conditions.
         This option is only available when compiling for CPUs with FFTW.
         Preferred resolution: :math:`2^N-1`.
@@ -452,6 +468,9 @@ When both are specified, the per-species value is used.
     position :math:`time \cdot c` is rounded up to the nearest `<position>` in the file to get it's
     `<density function>` which is used for that time step.
 
+* ``<plasma name> or plasmas.read_density_from_path`` (`string`) optional (default "")
+    Alternative to ``<plasma name>.density(x,y,z)``. Specify the path to an openPMD file that contains the species' number density for each location of the simulation. Both geometries (Cartesian ``xyz`` and Cylindrical ``rz`` + modes)  are supported, however not all dimensions need to be included. The mesh in the file can be chosen with ``<plasma name> or plasmas.density_mesh_name`` (default ``density``) and must contain a single ``SCALAR`` component. Examples of scripts to generate such files can be found in ``tools/write_plasma_density.py`` and ``tools/write_plasma_density_rz.py``.
+
 * ``<plasma name> or plasmas.ppc`` (2 `integer`)
     The number of plasma particles per cell in x and y.
     Since in a quasi-static code, there is only a 2D plasma slice evolving along the longitudinal
@@ -537,17 +556,20 @@ When both are specified, the per-species value is used.
     the compromise option ``2 2`` can be chosen. This will however require more memory in the binning process.
 
 * ``<plasma name> or plasmas.fine_patch(x,y)`` (`int`) optional (default `0`)
-    When using mesh refinement it can be helpful to increase the number of particles per cell drastically
-    in a small part of the domain. For this parameter a function of ``x`` and ``y`` needs to be specified
-    that evaluates to ``1`` where the number of particles per cell should be higher and ``0`` everywhere else.
-    For example use ``plasmas.fine_patch(x,y) = "sqrt(x^2+y^2) < 10"`` to specify a circle around ``x=0, y=0``
-    with a radius of ``10``. Note that the function is evaluated at the cell centers of the level zero grid.
+    When using mesh refinement it can be helpful to increase the number of particles per cell drastically in a small part of the domain. For this parameter, a function of ``x`` and ``y`` must be specified and returns an integer refinement flag. The function may evaluate to:
 
-* ``<plasma name> or plasmas.fine_ppc`` (2 `int`) optional (default `0 0`)
+    * ``0`` use the default number of particles per cell (no fine patch),
+    * ``1`` apply the first fine-patch level,
+    * ``2`` apply the second fine-patch level.
+
+    This allows up to two nested or distinct fine-patch regions with different particle densities.
+    For example, using ``plasmas.fine_patch(x, y) = "sqrt(x^2 + y^2) < 10"`` specifies a circular region of radius ``10`` around ``x = 0, y = 0`` where the function evaluates to ``1`` and the first fine-patch level is applied, while it evaluates to ``0`` elsewhere. More complex expressions may be used to return ``2`` in selected regions to enable the second fine-patch level. Note that the function is evaluated at the cell centers of the level zero grid.
+
+* ``<plasma name> or plasmas.fine_ppc`` (2 or 4 `int`) optional (default `0 0 0 0`)
     The number of plasma particles per cell in x and y inside the fine plasma patch. This must be
     divisible by the ppc outside the fine patch in both directions. The ppc number is taken relative
     to the cell size of mesh refinement level 0 so it typically should be much larger than
-    ``<plasma name> or plasmas.ppc``.
+    ``<plasma name> or plasmas.ppc``. If two levels of fine patch are used the number of plasma particles per cell are specified as ``x1 y1 x2 y2``.
 
 * ``<plasma name> or plasmas.fine_transition_cells`` (`int`) optional (default `5`)
     Number of cells that are used just outside of the fine plasma patch to smoothly transition
@@ -936,15 +958,21 @@ Parameters starting with ``lasers.`` apply to all laser pulses, parameters start
 * ``lasers.use_phase`` (`bool`) optional (default `true`)
     Whether the phase terms (:math:`\theta` in Eq. (6) of [C. Benedetti et al. Plasma Phys. Control. Fusion 60.1: 014002 (2017)]) are computed and used in the laser envelope advance. Keeping the phase should be more accurate, but can cause numerical issues in the presence of strong depletion/frequency shift.
 
+* ``lasers.use_non_centered_push`` (`bool`) optional (default `false`)
+    By default, the laser solver uses the two previous time steps to compute the next one.
+    In some cases this can lead to unphysical fast oscillations.
+    With this setting, only one previous time step is used which, can help to reduce oscillations
+    but is less accurate.
+
 * ``lasers.interp_order`` (`int`) optional (default `1`)
     Transverse shape order for the laser to field interpolation of aabs and
     the field to laser interpolation of chi. Currently, `0,1,2,3` are implemented.
 
 * ``lasers.solver_type`` (`string`) optional (default `multigrid`)
-    Type of solver for the laser envelope solver, either ``fft`` or ``multigrid``.
-    Currently, the approximation that the phase is evaluated on-axis only is made with both solvers.
+    Type of solver for the laser envelope solver, either ``multigrid`` or ``off``.
+    Currently, the approximation that the phase is evaluated on-axis only is made.
     With the multigrid solver, we could drop this assumption.
-    For now, the fft solver should be faster, more accurate and more stable, so only use the multigrid one with care.
+    If set ``off``, the laser will not evolve and remain as the initial profile through the simulation.
 
 * ``lasers.MG_tolerance_rel`` (`float`) optional (default `1e-4`)
     Relative error tolerance of the multigrid solver used for the laser pulse.
@@ -1050,9 +1078,14 @@ There are different types of diagnostics in HiPACE++. The standard diagnostics a
 in-situ diagnostics allow for fast analysis of large beams or the plasma particles.
 Please make sure to always clear or rename the output folder before running a new simulation to avoid mixing data from different runs.
 
-* ``diagnostic.output_period`` (`integer`) optional (default `0`)
+* ``diagnostic.output_period`` (`integer` or `string`) optional (default `0`)
     Output period for standard beam and field diagnostics. Field or beam specific diagnostics can overwrite this parameter.
-    No output is given for ``diagnostic.output_period = 0``.
+    Diagnostic output is written to file when the current time step is a multiple of the
+    output period. For ``diagnostic.output_period = 0`` no output is given,
+    while ``diagnostic.output_period = 1`` always produces output. The output period can also
+    be a function of ``current_step`` and ``current_time`` to have finer control of when output
+    should be written. Examples of how to use this can be found
+    `here <https://github.com/Hi-PACE/hipace/pull/1334>`__.
 
 * ``hipace.output_folder`` (`string`) optional (default ``"diags"``)
     Set the output path of diagnostic data. By default all types of diagnostics will output
@@ -1069,9 +1102,10 @@ Please make sure to always clear or rename the output folder before running a ne
 Beam diagnostics
 ^^^^^^^^^^^^^^^^
 
-* ``diagnostic.beam_output_period`` (`integer`) optional (default `0`)
+* ``diagnostic.beam_output_period`` (`integer` or `string`) optional (default `0`)
     Output period for the beam. No output is given for ``diagnostic.beam_output_period = 0``.
     If ``diagnostic.output_period`` is defined, that value is used as the default for this.
+    See the documentation of ``diagnostic.output_period`` for more details.
 
 * ``diagnostic.beam_data`` (`string`) optional (default `all`)
     Names of the beams written to file, separated by a space. The beam names need to be ``all``,
@@ -1089,14 +1123,15 @@ Field diagnostics
 
 * ``<diag name> or diagnostic.base_geometry`` (`string`) optional (default `level_0`)
     Which geometry the diagnostics should be based on.
-    Available geometries are `level_0`, `level_1`, `level_2` and `laser`,
+    Available geometries are `level_0`, `level_1`, `level_2`, `laser` and `histogram`,
     depending on if MR or a laser is used.
     If ``<diag name>`` is equal to ``lev0 lev1 lev2 laser_diag``, the default for this parameter
     becomes ``level_0 level_1 level_2 laser`` respectively.
 
-* ``<diag name>.output_period`` (`integer`) optional (default `0`)
+* ``<diag name>.output_period`` (`integer` or `string`) optional (default `0`)
     Output period for fields. No output is given for ``<diag name>.output_period = 0``.
     If ``diagnostic.output_period`` is defined, that value is used as the default for this.
+    See the documentation of ``diagnostic.output_period`` for more details.
 
 * ``<diag name> or diagnostic.diag_type`` (`string`)
     Type of field output. Available options are `xyz`, `xz`, `yz` and `xy_integrated`.
@@ -1147,10 +1182,75 @@ Field diagnostics
     but the charge density from every plasma species will be deposited into individual fields
     accessible as ``rho_<plasma name>`` in ``diagnostic.field_data``.
 
+* ``hipace.deposit_n`` (`bool`) optional (default `0`)
+    Whether the number density of each plasma species should be deposited so that it is available as a diagnostic.
+    If ``n_<plasma name>`` is explicitly mentioned in ``diagnostic.field_data``, then the default will become `1`.
+
+* ``hipace.deposit_n_ion_levels`` (`bool`) optional (default `0`)
+    This option works similarly to ``hipace.deposit_rho_individual``, but the number density will
+    be split according to the ionization level. Every plasma species that is ionizable will be
+    deposited into individual fields accessible as ``n_<plasma name>_ionlev_<ionization level>``
+    in ``diagnostic.field_data``.
+
 * ``hipace.deposit_temp_individual`` (`bool`) optional (default `0`)
     The weights, momentum, and their squares from every plasma species
     will be deposited into individual fields accessible as ``w``, ``ux_<plasma name>`` or
     ``ux^2_<plasma name>`` (similarly for ``uy`` and ``uz``) in ``diagnostic.field_data``.
+
+* ``hipace.temperature_depos_order`` (`int`) optional (default `2`)
+    When ``hipace.deposit_temp_individual`` is turned on,
+    this option specifies the shape order of the deposited fields.
+    Currently, 0,1,2,3 are implemented.
+
+Particle Histogram diagnostics
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This diagnostic allows the direct computation of histograms of arbitrary particle
+quantities during the simulation runtime. It supports both plasma and beam particles.
+It is part of the standard field diagnostic and is enabled by setting
+``<diag name>.base_geometry = histogram``. Histograms may have one or two user-defined axes.
+Optionally, the simulation z-axis can be included as an additional axis or integrated over.
+All field diagnostic parameters apply, except ``field_data`` and ``diag_type``.
+For example, ``patch_lo`` and ``patch_hi`` can be used to restrict the particles included in
+the histogram in coordinate space, but do not modify the histogram axes.
+Each particle species produces a separate histogram that is output as
+``<species name>_<diag name>``. No unit conversion or normalization by cell volume is applied.
+Particles outside the histogram bounds are discarded.
+
+* ``<diag name>.hist_species_names`` (`string`)
+    List of species to include. Can be beam and/or plasma species.
+
+* ``<diag name>.hist_num_bins`` (`int` or 2 `int`)
+    Number of bins per histogram axis.
+
+* ``<diag name>.hist_bins_lo`` (`flaot` or 2 `flaot`)
+    Lower bound of each histogram axis.
+
+* ``<diag name>.hist_bins_hi`` (`flaot` or 2 `flaot`)
+    Upper bound of each histogram axis.
+
+* ``<diag name>.hist_function`` (`string`)
+    Parser expression defining the first histogram axis as a function of particle properties:
+    ``x``, ``y``, ``z``, ``ux``, ``uy``, ``uz``, ``ga_psi``, ``w``, ``ion_lev``.
+    Here, ``ga_psi`` is the quasi-static weighting factor for plasma particles,
+    ``ion_lev`` is the ionization level (for ionizable species), and ``w`` is the
+    macro-particle weight.
+
+* ``<diag name>.hist_function2`` (`string`) optional
+    Parser expression defining the second histogram axis. Uses the same variables as
+    ``<diag name>.hist_function``.
+
+* ``<diag name>.hist_weight`` (`string`) optional (default `w`)
+    Parser expression defining the weight contributed by each particle to the histogram.
+    For plasma particles, this weight is automatically multiplied by ``ga_psi``
+    to obtain the physical particle weight. Uses the same variables as
+    ``<diag name>.hist_function``. This can also be used to filter particles.
+
+* ``<diag name>.hist_add_z_axis`` (`bool`) optional (default `false`)
+    Add the zeta axis from the simulation to the histogram output.
+    This is more efficient than adding z as a custom histogram axis using
+    ``hist_function`` or ``hist_function2``. If disabled the histogram contains data from
+    all z slices in the range given by ``patch_lo`` and ``patch_hi``.
 
 In-situ diagnostics
 ^^^^^^^^^^^^^^^^^^^
@@ -1212,8 +1312,9 @@ Usage example:
     ir.time, ir.zeta # get metadata needed for plotting
 
 
-* ``<beam name> or beams.insitu_period`` (`int`) optional (default ``0``)
+* ``<beam name> or beams.insitu_period`` (`integer` or `string`) optional (default ``0``)
     Period of the beam in-situ diagnostics. `0` means no beam in-situ diagnostics.
+    See the documentation of ``diagnostic.output_period`` for more details.
 
 * ``<beam name> or beams.insitu_file_prefix`` (`string`) optional (default ``"<hipace.output_folder>/insitu"``)
     Path of the beam in-situ output. Must not be the same as `hipace.file_prefix`.
@@ -1222,8 +1323,9 @@ Usage example:
     Maximum radius ``<beam name>.insitu_radius`` :math:`= \sqrt{x^2 + y^2}` within which particles are
     used for the calculation of the insitu diagnostics.
 
-* ``<plasma name> or plasmas.insitu_period`` (`int`) optional (default ``0``)
+* ``<plasma name> or plasmas.insitu_period`` (`integer` or `string`) optional (default ``0``)
     Period of the plasma in-situ diagnostics. `0` means no plasma in-situ diagnostics.
+    See the documentation of ``diagnostic.output_period`` for more details.
 
 * ``<plasma name> or plasmas.insitu_file_prefix`` (`string`) optional (default ``"<hipace.output_folder>/insitu"``)
     Path of the plasma in-situ output. Must not be the same as `hipace.file_prefix`.
@@ -1232,17 +1334,19 @@ Usage example:
     Maximum radius ``<plasma name>.insitu_radius`` :math:`= \sqrt{x^2 + y^2}` within which particles are
     used for the calculation of the insitu diagnostics.
 
-* ``fields.insitu_period`` (`int`) optional (default ``0``)
+* ``fields.insitu_period`` (`integer` or `string`) optional (default ``0``)
     Period of the field in-situ diagnostics. `0` means no field in-situ diagnostics.
+    See the documentation of ``diagnostic.output_period`` for more details.
 
 * ``fields.insitu_file_prefix`` (`string`) optional (default ``"<hipace.output_folder>/insitu"``)
     Path of the field in-situ output. Must not be the same as `hipace.file_prefix`.
 
-* ``lasers.insitu_period`` (`int`) optional (default ``0``)
+* ``lasers.insitu_period`` (`integer` or `string`) optional (default ``0``)
     Period of the laser in-situ diagnostics. `0` means no laser in-situ diagnostics.
 
 * ``lasers.insitu_file_prefix`` (`string`) optional (default ``"<hipace.output_folder>/insitu"``)
     Path of the laser in-situ output. Must not be the same as `hipace.file_prefix`.
+    See the documentation of ``diagnostic.output_period`` for more details.
 
 Additional physics
 ------------------
@@ -1288,7 +1392,7 @@ Whether the energy loss due to classical radiation reaction of beam particles is
     In normalized units, `hipace.background_density_SI` must be specified.
 
 Spin tracking
--------------
+^^^^^^^^^^^^^
 
 Track the spin of each beam particle as it is rotated by the electromagnetic fields using the
 Thomas-Bargmann-Michel-Telegdi (TBMT) model, see
@@ -1307,6 +1411,30 @@ or beam in-situ diagnostic as ``[sx], [sx^2], [sy], [sy^2], [sz], [sz^2]``.
 * ``<beam name> or beams.spin_anom`` (`bool`) optional (default `0.00115965218128`)
     The anomalous magnetic moment. The default value is the moment for electrons.
 
+Grid Ionization
+^^^^^^^^^^^^^^^
+
+For weak laser pulses that ionize neutral gas to make a plasma channel but do not form an electron
+wake, the ionization fraction and resulting electron temperature can be computed directly on the
+grid without using plasma particles. This results in significantly faster computation and eliminates
+statistical noise. However, ions and electrons remain stationary with this approach.
+
+To use this feature, start with a normal input script that contains all the plasma species with
+plasma laser ionization fully set up. Then set the particles per cell for all plasmas to zero
+``<plasma name>.ppc = 0 0`` and add all the ionizable plasma species to
+``grid_ionization.plasma_names``. The ``ionization_product`` species of the plasmas will be
+ignored and instead generic electrons will be produced by grid ionization.
+
+When enabled, the fields ``grid_ionization_w_elec``, ``grid_ionization_ux^2_elec``,
+``grid_ionization_uy^2_elec``, ``grid_ionization_uz_elec``, ``grid_ionization_uz^2_elec``
+and ``grid_ionization_w_<plasma name>_<ion level>`` will be available in the diagnostic to
+compute the electron temperature and ionization fraction. Additionally, the refractive index
+chi is updated by the ionized electrons.
+
+* ``grid_ionization.plasma_names`` (list of `strings`) optional (default `no_gridplasma`)
+    Names of existing plasma species that will be modeled by the grid instead of particles.
+    All of these species should be atoms with laser ionization enabled and with
+    zero particles per cell ``ppc = 0 0``.
 
 Parser
 ------

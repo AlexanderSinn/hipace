@@ -12,4 +12,5 @@ target_sources(HiPACE
     PlasmaDepositCurrent.cpp
     ExplicitDeposition.cpp
     HelmholtzDeposition.cpp
+    HistogramDeposition.cpp
 )

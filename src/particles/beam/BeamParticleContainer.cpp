@@ -59,7 +59,8 @@ BeamParticleContainer::ReadParameters ()
     queryWithParser(pp, "do_z_push", m_do_z_push);
     queryWithParserAlt(pp, "do_push", m_do_push, pp_alt);
     queryWithParserAlt(pp, "do_radiation_reaction", m_do_radiation_reaction, pp_alt);
-    queryWithParserAlt(pp, "insitu_period", m_insitu_period, pp_alt);
+    queryWithParserAlt(pp, "insitu_period", m_insitu_period.m_func_str, pp_alt);
+    m_insitu_period.compile();
     m_insitu_file_prefix = Hipace::m_output_folder + "/insitu";
     const bool set_file_prefix =
         queryWithParserAlt(pp, "insitu_file_prefix", m_insitu_file_prefix, pp_alt);
@@ -106,14 +107,14 @@ BeamParticleContainer::ReadParameters ()
             getWithParserAlt(pp, "initial_spin", m_initial_spin, pp_alt);
         }
         queryWithParserAlt(pp, "spin_anom", m_spin_anom, pp_alt);
-        for (auto& beam_tile : m_slices) {
-            // Use 3 real and 0 int runtime components
-            beam_tile.define(3, 0);
-        }
     }
 
     getBeamInitSlice().define(m_do_spin_tracking ? 3 : 0, 0, nullptr, nullptr,
         m_initialize_on_cpu ? amrex::The_Pinned_Arena() : amrex::The_Arena());
+
+    for (auto& beam_tile : m_slices) {
+        beam_tile.define(m_do_spin_tracking ? 3 : 0, 0, nullptr, nullptr, amrex::The_Arena());
+    }
 }
 
 amrex::Real
@@ -318,7 +319,7 @@ BeamParticleContainer::InitData (const amrex::Geometry& geom)
                              << "' will be initialized with no particles!\n";
     }
 
-    if (m_insitu_period > 0) {
+    if (m_insitu_period.isNonZero()) {
 #ifdef HIPACE_USE_OPENPMD
         AMREX_ALWAYS_ASSERT_WITH_MESSAGE(m_insitu_file_prefix !=
             Hipace::GetInstance().m_openpmd_writer.m_file_prefix,
@@ -462,8 +463,9 @@ BeamParticleContainer::ReorderParticles (int beam_slice, int step, amrex::Geomet
         auto& soa = ptile.GetStructOfArrays();
 
         {
-            typename BeamTile::SoA::IdCPU tmp_idcpu(np_total);
-
+            typename BeamTile::SoA::IdCPU tmp_idcpu;
+            tmp_idcpu.setArena(amrex::The_Arena());
+            tmp_idcpu.resize(np_total);
             auto src = soa.GetIdCPUData().data();
             uint64_t* dst = tmp_idcpu.data();
             amrex::ParallelFor(np_total,
@@ -476,7 +478,9 @@ BeamParticleContainer::ReorderParticles (int beam_slice, int step, amrex::Geomet
         }
 
         { // Create a scope for the temporary vector below
-            BeamTile::RealVector tmp_real(np_total);
+            BeamTile::RealVector tmp_real;
+            tmp_real.setArena(amrex::The_Arena());
+            tmp_real.resize(np_total);
             for (int comp = 0; comp < soa.NumRealComps(); ++comp) {
                 auto src = soa.GetRealData(comp).data();
                 amrex::ParticleReal* dst = tmp_real.data();
@@ -490,7 +494,9 @@ BeamParticleContainer::ReorderParticles (int beam_slice, int step, amrex::Geomet
             }
         }
 
-        BeamTile::IntVector tmp_int(np_total);
+        BeamTile::IntVector tmp_int;
+        tmp_int.setArena(amrex::The_Arena());
+        tmp_int.resize(np_total);
         for (int comp = 0; comp < soa.NumIntComps(); ++comp) {
             auto src = soa.GetIntData(comp).data();
             int* dst = tmp_int.data();

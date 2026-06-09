@@ -13,6 +13,7 @@
 #include "mg_solver/HpMultiGrid.H"
 #include "fields/fft_poisson_solver/fft/AnyFFT.H"
 #include "utils/Parser.H"
+#include "utils/IOUtil.H"
 
 #include <AMReX_MultiFab.H>
 #include <AMReX_Vector.H>
@@ -129,8 +130,7 @@ public:
      * \param[in] max_step maximum time step of simulation
      * \param[in] max_time maximum time of simulation
      */
-    void InSituComputeDiags (int step, amrex::Real time, int islice,
-                              int max_step, amrex::Real max_time);
+    void InSituComputeDiags (int step, int islice, amrex::Real time, bool is_last_step);
 
     /** Dump in-situ reduced diagnostics to file.
      * \param[in] step current time step
@@ -138,7 +138,7 @@ public:
      * \param[in] max_step maximum time step of simulation
      * \param[in] max_time maximum time of simulation
      */
-    void InSituWriteToFile (int step, amrex::Real time, int max_step, amrex::Real max_time);
+    void InSituWriteToFile (int step, amrex::Real time, bool is_last_step);
 
     /** Get the geometry of the Helmholtz Box */
     const amrex::Geometry& GetHelmholtzGeom () const { return m_helmholtz_geom_3D; }
@@ -234,7 +234,7 @@ private:
     static constexpr int m_insitu_ncp = 1;
     /** How often the insitu helmholtz diagnostics should be computed and written
      * Default is 0, meaning no output */
-    int m_insitu_period {0};
+    utils::DiagPeriod m_insitu_period {"0"};
     /** All per-slice real helmholtz properties */
     amrex::Vector<amrex::Real> m_insitu_rdata;
     /** Sum of all per-slice real helmholtz properties */

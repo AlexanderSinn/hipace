@@ -31,6 +31,11 @@ public:
                    amrex::Vector<amrex::DistributionMapping> slice_dm,
                    amrex::Vector<amrex::Geometry> slice_gm, amrex::Vector<amrex::Geometry> gm);
 
+    /** \brief Loop over plasma species and initialize values used for ionization.
+     *
+     * \param[in] gm Geometry of the simulation, to get the cell size
+     */
+    void InitIonization (amrex::Vector<amrex::Geometry> gm);
 
     /** Loop over plasma species and depose their currents into the current 2D slice in fields
      *
@@ -41,12 +46,13 @@ public:
      * \param[in] deposit_rho if true, deposit to rho
      * \param[in] deposit_chi if true, deposit chi
      * \param[in] deposit_rhomjz if true, deposit rhomjz
+     * \param[in] deposit_n if true, deposit n
      * \param[in] gm Geometry of the simulation, to get the cell size etc.
      * \param[in] lev MR level
      */
     void DepositCurrent (
         Fields & fields, int which_slice, bool deposit_jx_jy,
-        bool deposit_jz, bool deposit_rho, bool deposit_chi, bool deposit_rhomjz,
+        bool deposit_jz, bool deposit_rho, bool deposit_chi, bool deposit_rhomjz, const bool deposit_n,
         amrex::Vector<amrex::Geometry> const& gm, int const lev);
 
     /** Loop over plasma species and deposit their temperature into the current 2D slice in fields
@@ -143,21 +149,48 @@ public:
     /** Compute reduced plasma diagnostics of current slice, store in member variable.
      * \param[in] step time step of simulation
      * \param[in] islice current slice, on which diags are computed.
-     * \param[in] max_step maximum time step of simulation
-     * \param[in] physical_time physical time at the given step
-     * \param[in] max_time maximum time of simulation
+     * \param[in] time physical time at the given step
+     * \param[in] is_last_step if this is the last time step of the simulation
      */
-    void InSituComputeDiags (int step, int islice, int max_step,
-                             amrex::Real physical_time, amrex::Real max_time);
+    void InSituComputeDiags (int step, int islice, amrex::Real time, bool is_last_step);
     /** Write reduced beam diagnostics to file
      * \param[in] step time step of simulation
      * \param[in] time physical time at the given step
      * \param[in] geom Simulation geometry
-     * \param[in] max_step maximum time step of simulation
-     * \param[in] max_time maximum time of simulation
+     * \param[in] is_last_step if this is the last time step of the simulation
      */
     void InSituWriteToFile (int step, amrex::Real time, const amrex::Geometry& geom,
-                            int max_step, amrex::Real max_time);
+                            bool is_last_step);
+
+    PlasmaParticleContainer& GetPlasma (const std::string& name) {
+        for (int i = 0; i < m_nplasmas; ++i) {
+            if (m_names[i] == name) {
+                return m_all_plasmas[i];
+            }
+        }
+        amrex::Abort("Unknown plasma name " + name);
+        return m_all_plasmas[0];
+    }
+
+    const PlasmaParticleContainer& GetPlasma (const std::string& name) const {
+        for (int i = 0; i < m_nplasmas; ++i) {
+            if (m_names[i] == name) {
+                return m_all_plasmas[i];
+            }
+        }
+        amrex::Abort("Unknown plasma name " + name);
+        return m_all_plasmas[0];
+    }
+
+    [[nodiscard]]
+    bool HasPlasma (const std::string& name) const {
+        for (auto& plasma_name : m_names) {
+            if (plasma_name == name) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     amrex::Vector<PlasmaParticleContainer> m_all_plasmas; /**< contains all plasma containers */
     int m_nplasmas = 0; /**< number of plasma containers */
