@@ -722,37 +722,41 @@ Hipace::SolveOneSlice (int islice, int step, bool is_first_step, bool is_last_st
         m_multi_plasma.DoDepositTemperature(m_fields, m_3D_geom, lev);
     }
 
-    // deposit current
-    for (int lev=0; lev<current_N_level; ++lev) {
-        if (m_explicit) {
-            // deposit jx, jy, chi and rhomjz for all plasmas
-            m_multi_plasma.DepositCurrent(m_fields, WhichSlice::This, true, false,
-                m_deposit_rho || m_deposit_rho_individual,
-                true, true, m_deposit_n || m_deposit_n_ion_levels, m_3D_geom, lev);
+    if (m_has_particles) {
 
-            // deposit jz_beam and maybe rhomjz of the beam on This slice
-            m_multi_beam.DepositCurrentSlice(m_fields, m_3D_geom, lev, is_first_step,
-                false, true, m_do_beam_jz_minus_rho, WhichSlice::This, WhichBeamSlice::This);
-        } else {
-            // deposit jx jy jz (maybe chi) and rhomjz
-            m_multi_plasma.DepositCurrent(m_fields, WhichSlice::This, true, true,
-                m_deposit_rho || m_deposit_rho_individual,
-                m_use_laser, true,m_deposit_n || m_deposit_n_ion_levels, m_3D_geom, lev);
+        // deposit current
+        for (int lev=0; lev<current_N_level; ++lev) {
+            if (m_explicit) {
+                // deposit jx, jy, chi and rhomjz for all plasmas
+                m_multi_plasma.DepositCurrent(m_fields, WhichSlice::This, true, false,
+                    m_deposit_rho || m_deposit_rho_individual,
+                    true, true, m_deposit_n || m_deposit_n_ion_levels, m_3D_geom, lev);
 
-            // deposit jx jy jz and maybe rhomjz on This slice
-            m_multi_beam.DepositCurrentSlice(m_fields, m_3D_geom, lev, is_first_step,
-                m_do_beam_jx_jy_deposition, true, m_do_beam_jz_minus_rho,
-                WhichSlice::This, WhichBeamSlice::This);
+                // deposit jz_beam and maybe rhomjz of the beam on This slice
+                m_multi_beam.DepositCurrentSlice(m_fields, m_3D_geom, lev, is_first_step,
+                    false, true, m_do_beam_jz_minus_rho, WhichSlice::This, WhichBeamSlice::This);
+            } else {
+                // deposit jx jy jz (maybe chi) and rhomjz
+                m_multi_plasma.DepositCurrent(m_fields, WhichSlice::This, true, true,
+                    m_deposit_rho || m_deposit_rho_individual,
+                    m_use_laser, true,m_deposit_n || m_deposit_n_ion_levels, m_3D_geom, lev);
+
+                // deposit jx jy jz and maybe rhomjz on This slice
+                m_multi_beam.DepositCurrentSlice(m_fields, m_3D_geom, lev, is_first_step,
+                    m_do_beam_jx_jy_deposition, true, m_do_beam_jz_minus_rho,
+                    WhichSlice::This, WhichBeamSlice::This);
+            }
+            // add neutralizing background
+            m_fields.AddRhoIons(lev);
+
+            // deposit grid current into jz_beam
+            m_grid_current.DepositCurrentSlice(m_fields, m_3D_geom[lev], lev, islice);
         }
-        // add neutralizing background
-        m_fields.AddRhoIons(lev);
 
-        // deposit grid current into jz_beam
-        m_grid_current.DepositCurrentSlice(m_fields, m_3D_geom[lev], lev, islice);
+        // Psi ExmBy EypBx Ez Bz solve
+        m_fields.SolvePoissonPsiExmByEypBxEzBz(m_3D_geom, current_N_level);
+
     }
-
-    // Psi ExmBy EypBx Ez Bz solve
-    m_fields.SolvePoissonPsiExmByEypBxEzBz(m_3D_geom, current_N_level);
 
     // Calculate grid ionization and update chi
     for (int lev=0; lev<current_N_level; ++lev) {
@@ -773,29 +777,33 @@ Hipace::SolveOneSlice (int islice, int step, bool is_first_step, bool is_last_st
         m_multi_beam.TagByLevel(current_N_level, m_3D_geom, WhichSlice::Next);
     }
 
-    // Bx By solve
-    if (m_explicit) {
-        for (int lev=0; lev<current_N_level; ++lev) {
-            // The algorithm used was derived in
-            // [Wang, T. et al. Phys. Rev. Accel. Beams 25, 104603 (2022)],
-            // it is implemented in the WAND-PIC quasistatic PIC code.
+    if (m_has_particles) {
 
-            // deposit jx_beam and jy_beam in the Next slice
-            m_multi_beam.DepositCurrentSlice(m_fields, m_3D_geom, lev, is_first_step,
-                m_do_beam_jx_jy_deposition, false, false, WhichSlice::Next, WhichBeamSlice::Next);
+        // Bx By solve
+        if (m_explicit) {
+            for (int lev=0; lev<current_N_level; ++lev) {
+                // The algorithm used was derived in
+                // [Wang, T. et al. Phys. Rev. Accel. Beams 25, 104603 (2022)],
+                // it is implemented in the WAND-PIC quasistatic PIC code.
 
-            // Set Sx and Sy to beam contribution
-            InitializeSxSyWithBeam(lev);
+                // deposit jx_beam and jy_beam in the Next slice
+                m_multi_beam.DepositCurrentSlice(m_fields, m_3D_geom, lev, is_first_step,
+                    m_do_beam_jx_jy_deposition, false, false, WhichSlice::Next, WhichBeamSlice::Next);
 
-            // Deposit Sx and Sy for every plasma species
-            m_multi_plasma.ExplicitDeposition(m_fields, m_3D_geom, lev);
+                // Set Sx and Sy to beam contribution
+                InitializeSxSyWithBeam(lev);
 
-            // Solves Bx, By using Sx, Sy and chi
-            ExplicitMGSolveBxBy(lev, WhichSlice::This);
+                // Deposit Sx and Sy for every plasma species
+                m_multi_plasma.ExplicitDeposition(m_fields, m_3D_geom, lev);
+
+                // Solves Bx, By using Sx, Sy and chi
+                ExplicitMGSolveBxBy(lev, WhichSlice::This);
+            }
+        } else {
+            // Solves Bx and By in the current slice and modifies the force terms of the plasma particles
+            PredictorCorrectorLoopToSolveBxBy(islice, current_N_level, is_first_step);
         }
-    } else {
-        // Solves Bx and By in the current slice and modifies the force terms of the plasma particles
-        PredictorCorrectorLoopToSolveBxBy(islice, current_N_level, is_first_step);
+
     }
 
     if (m_multi_beam.isSalameNow(is_first_step)) {

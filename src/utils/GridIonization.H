@@ -23,6 +23,8 @@ private:
     /** Names of plasma species used in grid ionization */
     amrex::Vector<std::string> m_names {"no_gridplasma"};
 
+    bool m_output_temperature = false;
+
 public:
     /** Read parameters from the input file */
     void ReadParameters ();

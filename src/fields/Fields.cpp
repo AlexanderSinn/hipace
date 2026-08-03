@@ -74,7 +74,17 @@ Fields::AllocData (
         m_any_neutral_background = Hipace::GetInstance().m_multi_plasma.AnySpeciesNeutralizeBackground();
         const bool any_salame = Hipace::GetInstance().m_multi_beam.AnySpeciesSalame();
 
-        if (m_explicit) {
+        if (!Hipace::m_has_particles) {
+            int isl = WhichSlice::This;
+            if (Hipace::m_use_laser) {
+                Comps[isl].multi_emplace(N_Comps, "chi");
+                Comps[isl].multi_emplace(N_Comps, "aabs");
+            }
+            for (const auto& c : Hipace::GetInstance().m_grid_ionization.GetFieldComponents(
+                                    Hipace::GetInstance().m_multi_plasma)) {
+                Comps[isl].multi_emplace(N_Comps, c);
+            }
+        } else if (m_explicit) {
             // explicit solver:
             // beams share jx_beam jy_beam jz_beam
             // jx jy rhomjz for all plasmas and beams
@@ -239,6 +249,10 @@ Fields::AllocData (
             slice_ba, slice_dm, N_Comps, m_slices_nguards,
             amrex::MFInfo().SetArena(amrex::The_Arena()));
         m_slices[lev].setVal(0._rt);
+    }
+
+    if (!Hipace::m_has_particles) {
+        return;
     }
 
     // set default Poisson solver based on the platform and resolution
@@ -580,10 +594,10 @@ Fields::Copy (const int current_N_level, const int i_slice, DiagnosticData& fd,
             current_N_level > fd.m_level) {
             auto slice_array = slice_func.array(mfi);
             amrex::Array4<amrex::Real> diag_array = fd.m_F_real.array();
-            const int comp_ExmBy = Comps[WhichSlice::This]["ExmBy"];
-            const int comp_EypBx = Comps[WhichSlice::This]["EypBx"];
-            const int comp_Bx = Comps[WhichSlice::This]["Bx"];
-            const int comp_By = Comps[WhichSlice::This]["By"];
+            const int comp_ExmBy = Hipace::m_has_particles ? Comps[WhichSlice::This]["ExmBy"] : -1;
+            const int comp_EypBx = Hipace::m_has_particles ? Comps[WhichSlice::This]["EypBx"] : -1;
+            const int comp_Bx = Hipace::m_has_particles ? Comps[WhichSlice::This]["Bx"] : -1;
+            const int comp_By = Hipace::m_has_particles ? Comps[WhichSlice::This]["By"] : -1;
             const amrex::Real clight = get_phys_const().c;
             amrex::ParallelFor(diag_box, fd.m_nfields,
                 [=] AMREX_GPU_DEVICE(int i, int j, int k, int n) noexcept
@@ -635,6 +649,13 @@ void
 Fields::InitializeSlices (int lev, int islice, const amrex::Vector<amrex::Geometry>& geom)
 {
     HIPACE_PROFILE("Fields::InitializeSlices()");
+
+    if (!Hipace::m_has_particles) {
+        if (Hipace::m_use_laser) {
+            setVal(0., lev, WhichSlice::This, "chi");
+        }
+        return;
+    }
 
     if (Hipace::m_explicit) {
         if (lev != 0 && islice == geom[lev].Domain().bigEnd(Direction::z)) {
@@ -715,6 +736,10 @@ void
 Fields::ShiftSlices (int lev)
 {
     HIPACE_PROFILE("Fields::ShiftSlices()");
+
+    if (!Hipace::m_has_particles) {
+        return;
+    }
 
     const bool explicit_solve = Hipace::m_explicit;
 

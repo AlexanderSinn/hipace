@@ -280,6 +280,9 @@ public:
     inline static bool m_use_amrex_mlmg = false;
     /** Whether the simulation uses a laser pulse */
     inline static bool m_use_laser = false;
+
+    inline static bool m_has_particles = false;
+
     /** Background plasma density in SI, used to compute collisions, ionization,
      * or radiation reaction in normalized units */
     inline static amrex::Real m_background_density_SI = 0.;

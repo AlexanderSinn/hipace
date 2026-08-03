@@ -32,10 +32,12 @@ GridIonization::GetFieldComponents (const MultiPlasma& multi_plasma)
     }
 
     ret.push_back("grid_ionization_w_elec");
-    ret.push_back("grid_ionization_ux^2_elec");
-    ret.push_back("grid_ionization_uy^2_elec");
-    ret.push_back("grid_ionization_uz_elec");
-    ret.push_back("grid_ionization_uz^2_elec");
+    if (m_output_temperature) {
+        ret.push_back("grid_ionization_ux^2_elec");
+        ret.push_back("grid_ionization_uy^2_elec");
+        ret.push_back("grid_ionization_uz_elec");
+        ret.push_back("grid_ionization_uz^2_elec");
+    }
 
     for (auto& plasma_name : m_names) {
         const auto& plasma = multi_plasma.GetPlasma(plasma_name);
@@ -141,14 +143,17 @@ GridIonization::IonizeGrid (Fields& fields, const MultiPlasma& multi_plasma,
 
     amrex::MultiFab& S = fields.getSlices(lev);
 
-    const amrex::GpuArray<int, 6> comps {
-        Comps[WhichSlice::This]["chi"],
-        Comps[WhichSlice::This]["grid_ionization_w_elec"],
-        Comps[WhichSlice::This]["grid_ionization_ux^2_elec"],
-        Comps[WhichSlice::This]["grid_ionization_uy^2_elec"],
-        Comps[WhichSlice::This]["grid_ionization_uz_elec"],
-        Comps[WhichSlice::This]["grid_ionization_uz^2_elec"]
-    };
+    amrex::GpuArray<int, 6> comps{};
+    const bool output_temperature = m_output_temperature;
+
+    comps[0] = Comps[WhichSlice::This]["chi"];
+    comps[1] = Comps[WhichSlice::This]["grid_ionization_w_elec"];
+    if (output_temperature) {
+        comps[2] = Comps[WhichSlice::This]["grid_ionization_ux^2_elec"];
+        comps[3] = Comps[WhichSlice::This]["grid_ionization_uy^2_elec"];
+        comps[4] = Comps[WhichSlice::This]["grid_ionization_uz_elec"];
+        comps[5] = Comps[WhichSlice::This]["grid_ionization_uz^2_elec"];
+    }
 
     for (auto& plasma_name : m_names) {
         const auto& plasma = multi_plasma.GetPlasma(plasma_name);
@@ -251,8 +256,13 @@ GridIonization::IonizeGrid (Fields& fields, const MultiPlasma& multi_plasma,
 
                         arr(i, j, ion_weight_comp + ion_lev) = new_weight;
                         arr(i, j, ion_weight_comp + ion_lev + 1) += transferred_weight;
+
                         // w
                         arr(i, j, comps[1]) += transferred_weight;
+
+                        if (output_temperature) {
+                            continue;
+                        }
 
                         if (linear_polarization) {
                             const amrex::Real delta = std::sqrt(Ep) * laser_dp_prefactor[ion_lev];

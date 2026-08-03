@@ -393,6 +393,14 @@ IonizationModule (const int lev,
     // Loop over particle boxes with both ion and electron Particle Containers at the same time
     for (amrex::MFIter mfi_ion = MakeMFIter(0, DfltMfi); mfi_ion.isValid(); ++mfi_ion)
     {
+        auto& ptile_elec = m_product_pc->DefineAndReturnParticleTile(0, mfi_ion);
+        auto& ptile_ion = DefineAndReturnParticleTile(0, mfi_ion);
+        long num_ions = ptile_ion.numParticles();
+
+        if (num_ions == 0) {
+            continue;
+        }
+
         // Extract field array from FabArray
         const amrex::FArrayBox& slice_fab = fields.getSlices(lev)[mfi_ion];
         Array3<const amrex::Real> const slice_arr = slice_fab.const_array();
@@ -409,13 +417,6 @@ IonizationModule (const int lev,
         // Offset for converting positions to indexes
         amrex::Real const x_pos_offset = GetPosOffset(0, geom, slice_fab.box());
         const amrex::Real y_pos_offset = GetPosOffset(1, geom, slice_fab.box());
-
-        auto& plevel_ion = GetParticles(0);
-        auto index = std::make_pair(mfi_ion.index(), mfi_ion.LocalTileIndex());
-        if(plevel_ion.find(index) == plevel_ion.end()) continue;
-        auto& ptile_elec = m_product_pc->DefineAndReturnParticleTile(0,
-            mfi_ion.index(), mfi_ion.LocalTileIndex());
-        auto& ptile_ion = plevel_ion.at(index);
 
         // Calculation of E0 in SI units for denormalization
         const amrex::Real wp = std::sqrt(static_cast<double>(background_density_SI) *
@@ -436,9 +437,6 @@ IonizationModule (const int lev,
         amrex::Real* AMREX_RESTRICT adk_exp_prefactor = m_adk_exp_prefactor.data();
         amrex::Real* AMREX_RESTRICT adk_power = m_adk_power.data();
         const int max_ion_lev = m_max_ion_lev;
-
-        long num_ions = ptile_ion.numParticles();
-
 
         // This kernel supports multiple deposition orders (0, 1, 2, 3) at compile time
         // and calculates ionization probability. If ionization occurs, it increments
@@ -585,6 +583,14 @@ LaserIonization (const int islice,
     // Loop over particle boxes with both ion and electron Particle Containers at the same time
     for (amrex::MFIter mfi_ion = MakeMFIter(0, DfltMfi); mfi_ion.isValid(); ++mfi_ion)
     {
+        auto& ptile_elec = m_product_pc->DefineAndReturnParticleTile(0, mfi_ion);
+        auto& ptile_ion = DefineAndReturnParticleTile(0, mfi_ion);
+        long num_ions = ptile_ion.numParticles();
+
+        if (num_ions == 0) {
+            continue;
+        }
+
         // Extract laser array
         Array3<const amrex::Real> const laser_arr = laser.getSlices().const_array(mfi_ion);
 
@@ -598,13 +604,6 @@ LaserIonization (const int islice,
         // Offset for converting positions to indexes
         amrex::Real const x_pos_offset = GetPosOffset(0, laser_geom, laser_geom.Domain());
         amrex::Real const y_pos_offset = GetPosOffset(1, laser_geom, laser_geom.Domain());
-
-        auto& plevel_ion = GetParticles(0);
-        auto index = std::make_pair(mfi_ion.index(), mfi_ion.LocalTileIndex());
-        if(plevel_ion.find(index) == plevel_ion.end()) continue;
-        auto& ptile_elec = m_product_pc->DefineAndReturnParticleTile(0,
-            mfi_ion.index(), mfi_ion.LocalTileIndex());
-        auto& ptile_ion = plevel_ion.at(index);
 
         // Calcuation of E0 in SI units for denormalization
         const amrex::Real wp = std::sqrt(static_cast<double>(background_density_SI) *
@@ -630,8 +629,6 @@ LaserIonization (const int islice,
         amrex::Real* AMREX_RESTRICT laser_adk_prefactor = m_laser_adk_prefactor.data();
         amrex::Real* AMREX_RESTRICT laser_dp_prefactor = m_laser_dp_prefactor.data();
         const int max_ion_lev = m_max_ion_lev;
-
-        long num_ions = ptile_ion.numParticles();
 
         // This kernel supports multiple deposition orders (0, 1, 2, 3) at compile time
         // and calculates ionization probability. If ionization occurs, it increments
