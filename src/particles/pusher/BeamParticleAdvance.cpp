@@ -391,23 +391,24 @@ AdvanceBeamParticlesSlice (
                 if (c_use_helmholtz.value) {
                     // If Helmholtz unaveraged model, add magnetic force from undulator
                     for (int iu=0; iu<nundulator; iu++) {
-                        const amrex::Real zprop = clight*time + zp/clight*0._rt - undulator_z[iu]; // +i*dt?
+                        const amrex::Real zprop = clight*(time+i*dt) + zp/clight*0._rt - undulator_z[iu];
                         const amrex::Real undulator_l = undulator_nperiod[iu]*undulator_period[iu];
-                        if (zprop + clight*i*dt >= 0 && zprop + clight*i*dt < undulator_l &&
-                            !helm_mode_is_envelope)
+                        const amrex::Real ku = 2._rt*MathConst::pi/undulator_period[iu];
+                        amrex::Real mag_dz = 0.5_rt*clight*dt;
+                        amrex::Real dz_err = clight*dt/10; // 10x smaller than sub-cycled dt
+                        // if (zprop + clight*i*dt >= 0 && zprop + clight*i*dt < undulator_l &&
+                        if (zprop >= -dz_err && zprop < undulator_l - mag_dz - dz_err && !helm_mode_is_envelope)
                         {
-                            const amrex::Real ku = 2.*MathConst::pi/undulator_period[iu];
                             amrex::Real mag_B0 = undulator_B0[iu];
-                            amrex::Real mag_phase = undulator_phase[iu];
                             amrex::Real mag_kx = undulator_kx[iu];
                             amrex::Real mag_ky = undulator_ky[iu];
                             amrex::Real Bx = 0._rt;
-                            amrex::Real By = mag_B0*std::cos( ku*zprop + mag_phase );
+                            amrex::Real By = mag_B0*std::cos( ku*zprop + ku*mag_dz );
                             amrex::Real Bz = 0._rt;
                             // Correction for magnetic fields in undulator
-                            Bx += mag_B0 * std::cos( ku*zprop + mag_phase ) * mag_kx*mag_kx*xp*yp;
-                            By *= (1._rt + mag_kx*mag_kx*xp*xp/2._rt + mag_ky*mag_ky*yp*yp/2._rt);
-                            Bz -= mag_B0 * std::sin( ku*zprop + mag_phase ) * ku*yp;
+                            Bx += mag_B0 * std::cos( ku*zprop + ku*mag_dz ) * mag_kx*mag_kx*xp*yp;
+                            By *= (1._rt + 0.5_rt*mag_kx*mag_kx*xp*xp + 0.5_rt*mag_ky*mag_ky*yp*yp);
+                            Bz -= mag_B0 * std::sin( ku*zprop + ku*mag_dz ) * ku*yp;
                             Bxp += Bx;
                             Byp += By;
                             Bzp += Bz;
