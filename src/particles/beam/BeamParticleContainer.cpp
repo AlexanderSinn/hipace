@@ -196,6 +196,9 @@ BeamParticleContainer::InitData (const amrex::Geometry& geom)
 
     m_thinquad_z.copyToDeviceAsync();
     m_thinquad_K.copyToDeviceAsync();
+    m_thickquad_z.copyToDeviceAsync();
+    m_thickquad_l.copyToDeviceAsync();
+    m_thickquad_k1ga.copyToDeviceAsync();
     m_phaseshifter_z.copyToDeviceAsync();
     m_phaseshifter_dz.copyToDeviceAsync();
     m_undulator_z.copyToDeviceAsync();
