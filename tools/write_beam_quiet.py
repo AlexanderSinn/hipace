@@ -76,7 +76,6 @@ for zslice in range(num_slices):
             data[3, begin:end:bins_per_lr] = emit/w0 * data[3, begin:end:bins_per_lr]
             data[4, begin:end:bins_per_lr] = emit/w0 * data[4, begin:end:bins_per_lr]
             data[5, begin:end:bins_per_lr] = gamma + 0 * data[5, begin:end:bins_per_lr]
-            data[6, begin:end:bins_per_lr] = single_weight
         else:
             data[0, begin:end:bins_per_lr] = data[0, obegin:oend:bins_per_lr]
             data[1, begin:end:bins_per_lr] = data[1, obegin:oend:bins_per_lr]
@@ -84,16 +83,25 @@ for zslice in range(num_slices):
             data[3, begin:end:bins_per_lr] = data[3, obegin:oend:bins_per_lr]
             data[4, begin:end:bins_per_lr] = data[4, obegin:oend:bins_per_lr]
             data[5, begin:end:bins_per_lr] = data[5, obegin:oend:bins_per_lr]
-            data[6, begin:end:bins_per_lr] = data[6, obegin:oend:bins_per_lr]
 
+# Calculate weight based on z position
+
+# Flattop
+data[6, :] = single_weight
+
+# Gauss
+# zmean = -100 * lr
+# zstd = 30 * lr
+# data[6, :] = single_weight * np.exp(-(data[2, :] - zmean)**2 / zstd**2)
 
 # Add shot noise
 for zslice in range(num_slices):
     m = part_per_bin
-    nbl = max(single_weight, 1) * bins_per_lr
-    tmp = np.zeros(bins_per_lr*m)
     d_start = zslice * bins_per_lr * m
     d_end = (zslice + 1) * bins_per_lr * m
+    avg_single_wieght = np.mean(data[6, d_start:d_end])
+    nbl = max(avg_single_wieght, 1) * bins_per_lr
+    tmp = np.zeros(bins_per_lr*m)
     for ih in range((bins_per_lr-1)//2):
         phi = np.repeat(2 * np.pi * np.random.uniform(0, 1, m), bins_per_lr)
         an = np.repeat(np.fmod(np.sqrt( - np.log(np.random.uniform(0, 1, m))/nbl)*2/(ih+1), 2*np.pi), bins_per_lr)
