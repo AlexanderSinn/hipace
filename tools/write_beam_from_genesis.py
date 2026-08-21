@@ -1,10 +1,9 @@
-import math
 import openpmd_api as io
 import numpy as np
-from numpy import random
 from scipy.constants import c, m_e, e
 import h5py
 import os.path
+import sys
 
 filename_in = 'beam.genesis_8192.h5'
 filename_out = 'beam.openpmd_8192'
@@ -79,7 +78,7 @@ particle["mass"].unit_dimension = {
 for k,m in [["x",0],["y",1],["z",2]]:
     particle["position"][k].reset_dataset(dataset)
     particle["position"][k].store_chunk(data[m])
-#     particle["position"][k].unit_SI = kp_inv
+    particle["position"][k].unit_SI = 1
 
 for k,m in [["x",3],["y",4],["z",5]]:
     particle["momentum"][k].reset_dataset(dataset)
