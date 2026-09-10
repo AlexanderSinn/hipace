@@ -247,50 +247,6 @@ OpenPMDWriter::WriteFieldData (
 }
 
 void
-OpenPMDWriter::InitBeamData (MultiBeam& beams, const amrex::Vector< std::string > beamnames)
-{
-    HIPACE_PROFILE("OpenPMDWriter::InitBeamData()");
-
-    const int nbeams = beams.get_nbeams();
-    m_offset.resize(nbeams);
-    m_uint64_beam_data.resize(nbeams);
-    m_real_beam_data.resize(nbeams);
-    for (int ibeam = 0; ibeam < nbeams; ibeam++) {
-
-        std::string name = beams.get_name(ibeam);
-        if(std::find(beamnames.begin(), beamnames.end(), name) ==  beamnames.end() ) continue;
-
-        auto& beam = beams.getBeam(ibeam);
-
-        // initialize beam IO on first slice
-        uint64_t np_total = beam.getTotalNumParticles();
-
-        if (beam.m_output_ratio > 1) {
-            np_total = (np_total + beam.m_output_ratio - 1) / beam.m_output_ratio;
-        }
-
-        m_uint64_beam_data[ibeam].resize(m_int_names.size());
-
-        for (std::size_t idx=0; idx<m_uint64_beam_data[ibeam].size(); idx++) {
-            m_uint64_beam_data[ibeam][idx].resize(np_total);
-        }
-
-        if (beam.m_do_spin_tracking) {
-            m_real_beam_data[ibeam].resize(m_real_names.size() + m_real_names_spin.size());
-        } else {
-            m_real_beam_data[ibeam].resize(m_real_names.size());
-        }
-
-        for (std::size_t idx=0; idx<m_real_beam_data[ibeam].size(); idx++) {
-            m_real_beam_data[ibeam][idx].resize(np_total);
-        }
-
-        // if first slice of loop over slices, reset offset
-        m_offset[ibeam] = 0;
-    }
-}
-
-void
 OpenPMDWriter::WriteBeamParticleData (MultiBeam& beams, openPMD::Iteration& iteration,
                                       const amrex::Geometry& geom,
                                       const amrex::Vector< std::string > beamnames)
@@ -353,70 +309,6 @@ OpenPMDWriter::WriteBeamParticleData (MultiBeam& beams, openPMD::Iteration& iter
             // not read until the data is flushed
             currRecordComp.storeChunkRaw(m_real_beam_data[ibeam][idx].data(), {0ull}, {np_total});
         }
-    }
-}
-
-void
-OpenPMDWriter::CopyBeams (MultiBeam& beams, const amrex::Vector< std::string > beamnames)
-{
-    HIPACE_PROFILE("OpenPMDWriter::CopyBeams()");
-
-    const int nbeams = beams.get_nbeams();
-    for (int ibeam = 0; ibeam < nbeams; ibeam++) {
-
-        std::string name = beams.get_name(ibeam);
-        if(std::find(beamnames.begin(), beamnames.end(), name) ==  beamnames.end() ) continue;
-
-        auto& beam = beams.getBeam(ibeam);
-
-        uint64_t np = beam.getNumParticles(WhichBeamSlice::This);
-
-        const int output_ratio = beam.m_output_ratio;
-
-        if (output_ratio > 1) {
-            np = amrex::partitionParticles(beam.getBeamSlice(WhichBeamSlice::This),
-                [=] AMREX_GPU_DEVICE (auto& ptd, int i) {
-                    return i < int(np) && ptd.idcpu(i) % output_ratio == 0;
-                }
-            );
-        }
-
-        if (np != 0) {
-            // copy data from GPU to IO buffer
-            auto& slice = beam.getBeamSlice(WhichBeamSlice::This);
-
-            for (std::size_t idx=0; idx<m_uint64_beam_data[ibeam].size(); idx++) {
-                const auto old_size = m_uint64_beam_data[ibeam][idx].size();
-                if (old_size < m_offset[ibeam] + np) {
-                    m_uint64_beam_data[ibeam][idx].resize(
-                        std::max<uint64_t>(old_size+old_size/4, m_offset[ibeam] + np)
-                    );
-                }
-                amrex::Gpu::copyAsync(amrex::Gpu::deviceToHost,
-                    slice.GetIdCPUData().begin(),
-                    slice.GetIdCPUData().begin() + np,
-                    m_uint64_beam_data[ibeam][idx].data() + m_offset[ibeam]);
-            }
-
-            AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
-                int(m_real_beam_data[ibeam].size()) == slice.NumRealComps(),
-                "List of real names in openPMD Writer class does not match the beam");
-
-            for (std::size_t idx=0; idx<m_real_beam_data[ibeam].size(); idx++) {
-                const auto old_size = m_real_beam_data[ibeam][idx].size();
-                if (old_size < m_offset[ibeam] + np) {
-                    m_real_beam_data[ibeam][idx].resize(
-                        std::max<uint64_t>(old_size+old_size/4, m_offset[ibeam] + np)
-                    );
-                }
-                amrex::Gpu::copyAsync(amrex::Gpu::deviceToHost,
-                    slice.GetRealData(idx).begin(),
-                    slice.GetRealData(idx).begin() + np,
-                    m_real_beam_data[ibeam][idx].data() + m_offset[ibeam]);
-            }
-        }
-
-        m_offset[ibeam] += np;
     }
 }
 

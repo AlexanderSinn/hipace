@@ -117,13 +117,6 @@ public:
      */
     void InitDiagnostics ();
 
-    /** \brief Initialize IO buffer for beams
-     *
-     * \param[in] beams multi beam container which is written to openPMD file
-     * \param[in] beamnames list of the names of the beam to be written to file
-     */
-    void InitBeamData (MultiBeam& beams, const amrex::Vector< std::string > beamnames);
-
     /** \brief writing openPMD beam data
      *
      * \param[in] a_multi_beam multi beam container which is written to openPMD file

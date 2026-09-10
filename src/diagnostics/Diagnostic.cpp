@@ -49,6 +49,10 @@ Diagnostic::ReadParameters (int nlev, bool use_laser, bool has_beam)
     for(amrex::Long i = 0; i < m_diag_data.size(); ++i) {
         m_diag_data[i].m_diag_name = diag_names[i];
     }
+
+#ifdef HIPACE_USE_OPENPMD
+    m_openpmd_writer.ReadParameters();
+#endif
 }
 
 bool
@@ -175,8 +179,11 @@ Diagnostic::Initialize (int nlev, bool use_laser,
         }
     }
     if (plasma_names.size() > 0) {
-        std::string type_name = "plasma_boundary";
-        type_name_to_diag_type.emplace(type_name, DiagnosticData::diag_type::plasma_boundary);
+        std::string type_name = "particle_boundary";
+        type_name_to_diag_type.emplace(type_name, DiagnosticData::diag_type::particle_boundary);
+        for (std::size_t i=0; i<beam_names.size(); ++i) {
+            type_name_to_output_comps_map[type_name][beam_names[i]] = 0;
+        }
         for (std::size_t i=0; i<plasma_names.size(); ++i) {
             type_name_to_output_comps_map[type_name][plasma_names[i]] = 0;
         }
@@ -234,7 +241,7 @@ Diagnostic::Initialize (int nlev, bool use_laser,
 
         if (fd.m_base_diag_type == DiagnosticData::diag_type::beam ||
             fd.m_base_diag_type == DiagnosticData::diag_type::plasma_slice ||
-            fd.m_base_diag_type == DiagnosticData::diag_type::plasma_boundary)
+            fd.m_base_diag_type == DiagnosticData::diag_type::particle_boundary)
         {
             for (auto& c : type_name_to_output_comps[base_type_name]) {
                 fd.m_species_names.push_back(c);
@@ -249,6 +256,12 @@ Diagnostic::Initialize (int nlev, bool use_laser,
                                 all_comps_error_str.str());
                 }
             }
+        }
+
+        // plasma slice parameters
+
+        if (fd.m_base_diag_type == DiagnosticData::diag_type::plasma_slice) {
+            queryWithParser(pp, "plasma_output_slice", fd.m_plasma_output_slice);
         }
 
         // parameters for all mesh based diagnostics
@@ -448,42 +461,32 @@ Diagnostic::Initialize (int nlev, bool use_laser,
             }
         }
     }
-
-    amrex::ParmParse ppb("beams");
-    // read in all beam names
-    amrex::Vector<std::string> all_beam_names;
-    queryWithParser(ppb, "names", all_beam_names);
-    // read in which beam should be written to file
-    queryWithParser(ppd, "beam_data", m_output_beam_names);
-
-    if(m_output_beam_names.empty()) {
-        m_output_beam_names = all_beam_names;
-    } else {
-        for(std::string beam_name : m_output_beam_names) {
-            if(beam_name == "all" || beam_name == "All") {
-                m_output_beam_names = all_beam_names;
-                break;
-            }
-            if(beam_name == "none" || beam_name == "None") {
-                m_output_beam_names.clear();
-                break;
-            }
-            AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
-                std::find(all_beam_names.begin(), all_beam_names.end(), beam_name)
-                    != all_beam_names.end(),
-                "Unknown beam name: " + beam_name + "\nmust be " +
-                "a subset of beams.names: " + amrex::ToString(all_beam_names) + ", 'all' or 'none'"
-            );
-        }
-    }
 }
 
 void
-Diagnostic::ResizeFDiagFAB (amrex::Vector<amrex::Geometry>& field_geom,
-                            amrex::Geometry const& laser_geom, int output_step,
-                            amrex::Real output_time, bool is_last_step)
+Diagnostic::InitDiagnosticsStep (amrex::Vector<amrex::Geometry>& field_geom,
+                                 amrex::Geometry const& laser_geom,
+                                 MultiPlasma& plasmas, MultiBeam& beams, int output_step,
+                                 amrex::Real output_time, bool is_last_step)
 {
+#ifdef HIPACE_USE_OPENPMD
+    if (hasAnyOutput(output_step, output_time, is_last_step)) {
+        m_openpmd_writer.InitDiagnostics();
+    }
+#endif
+
+    // all diagnostics that output a mesh
+
     for (auto& fd : m_diag_data) {
+
+        if (!(fd.m_base_diag_type == DiagnosticData::diag_type::field ||
+            fd.m_base_diag_type == DiagnosticData::diag_type::laser ||
+            fd.m_base_diag_type == DiagnosticData::diag_type::histogram))
+        {
+            continue;
+        }
+
+        fd.m_has_output = hasOutput(fd, output_step, output_time, is_last_step);
 
         amrex::Geometry geom;
 
@@ -499,6 +502,8 @@ Diagnostic::ResizeFDiagFAB (amrex::Vector<amrex::Geometry>& field_geom,
                 // particles are based on field level 0 geom
                 geom = field_geom[0];
                 break;
+            default:
+                break;
         }
 
         amrex::Box domain = geom.Domain();
@@ -513,6 +518,8 @@ Diagnostic::ResizeFDiagFAB (amrex::Vector<amrex::Geometry>& field_geom,
                     break;
                 case DiagnosticData::diag_type::histogram:
                     domain.grow(Hipace::GetInstance().m_fields.getSlices(0).nGrowVect());
+                    break;
+                default:
                     break;
             }
         }
@@ -575,8 +582,6 @@ Diagnostic::ResizeFDiagFAB (amrex::Vector<amrex::Geometry>& field_geom,
 
         domain.coarsen(fd.m_diag_coarsen);
 
-        fd.m_has_output = hasFieldOutput(fd, output_step, output_time, is_last_step);
-
         AMREX_ALWAYS_ASSERT_WITH_MESSAGE(domain.ok(),
             "Box for diagnostic object '" + fd.m_diag_name + "' is empty. "
             "Make sure that it intersects with the simulation domain!\n"
@@ -585,8 +590,8 @@ Diagnostic::ResizeFDiagFAB (amrex::Vector<amrex::Geometry>& field_geom,
             "Intersection: " + amrex::ToString(domain)
         );
 
-        if(fd.m_has_output) {
-            HIPACE_PROFILE("Diagnostic::ResizeFDiagFAB()");
+        if (fd.m_has_output) {
+            HIPACE_PROFILE("Diagnostic::InitDiagnosticsStep()");
 
             fd.m_realspace_geom = amrex::Geometry(domain, &diag_domain, geom.Coord());
 
@@ -628,6 +633,88 @@ Diagnostic::ResizeFDiagFAB (amrex::Vector<amrex::Geometry>& field_geom,
                     fd.m_hist_gpu_fab.setVal<amrex::RunOn::Device>(0);
                 }
                 break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    // all diagnostics that output particles
+
+    for (auto& fd : m_diag_data) {
+
+        if (!(fd.m_base_diag_type == DiagnosticData::diag_type::beam ||
+            fd.m_base_diag_type == DiagnosticData::diag_type::plasma_slice ||
+            fd.m_base_diag_type == DiagnosticData::diag_type::particle_boundary))
+        {
+            continue;
+        }
+
+        fd.m_has_output = hasOutput(fd, output_step, output_time, is_last_step);
+
+        if (fd.m_has_output) {
+            HIPACE_PROFILE("Diagnostic::InitDiagnosticsStep()");
+
+            const std::size_t num_species = fd.m_species_names.size();
+
+            fd.m_spceis_data.resize(num_species);
+            fd.m_idcpu_name.resize(num_species);
+            fd.m_real_names.resize(num_species);
+            fd.m_int_names.resize(num_species);
+
+            uint64_t np_total = 0;
+
+            for (std::size_t i = 0; i < num_species; ++i) {
+                const std::string& species_name = fd.m_species_names[i];
+                if (plasmas.HasPlasma(species_name)) {
+                    auto& plasma = plasmas.GetPlasma(species_name);
+                    np_total = plasma.TotalNumberOfParticles(false, true);
+
+                    fd.m_idcpu_name[i] = "id";
+
+                    if (fd.m_base_diag_type == DiagnosticData::diag_type::particle_boundary) {
+                        fd.m_real_names[i] = {
+                            "position_x", "position_y", "position_z",
+                            "weighting",
+                            "momentum_x", "momentum_y", "momentum_z"
+                        };
+                        fd.m_int_names[i] = {};
+                    } else if (fd.m_base_diag_type == DiagnosticData::diag_type::plasma_slice) {
+                        fd.m_real_names[i] = plasma.GetRealSoANames();
+                        fd.m_int_names[i] = plasma.GetIntSoANames();
+                    }
+                } else {
+                    auto& beam = beams.getBeam(species_name);
+                    np_total = beam.getTotalNumParticles();
+                    if (fd.m_output_ratio > 1) {
+                        np_total = (np_total + fd.m_output_ratio - 1) / fd.m_output_ratio;
+                    }
+
+                    fd.m_idcpu_name[i] = "id";
+                    fd.m_real_names[i] = {
+                        "position_x", "position_y", "position_z",
+                        "weighting",
+                        "momentum_x", "momentum_y", "momentum_z"
+                    };
+                    if (beam.m_do_spin_tracking) {
+                        fd.m_real_names[i].push_back("spin_x");
+                        fd.m_real_names[i].push_back("spin_y");
+                        fd.m_real_names[i].push_back("spin_z");
+                    }
+                    fd.m_int_names[i] = {};
+                }
+
+                fd.m_spceis_data[i].define(
+                    fd.m_real_names[i].size(),
+                    fd.m_int_names[i].size(),
+                    &fd.m_real_names[i],
+                    &fd.m_int_names[i],
+                    amrex::The_Pinned_Arena()
+                );
+
+                if (fd.m_base_diag_type == DiagnosticData::diag_type::beam) {
+                    fd.m_spceis_data[i].reserve(np_total, amrex::GrowthStrategy::Exact);
+                }
             }
         }
     }
@@ -710,6 +797,162 @@ Diagnostic::HistogramDepositionCopy (DiagnosticData& fd, int islice,
 }
 
 void
+Diagnostic::CopyBeams (DiagnosticData& fd, MultiBeam& beams)
+{
+    HIPACE_PROFILE("Diagnostic::CopyBeams()");
+
+    for (std::size_t i = 0; i < fd.m_species_names.size(); ++i) {
+        const std::string& species_name = fd.m_species_names[i];
+        auto& beam = beams.getBeam(species_name);
+
+        uint64_t np = beam.getNumParticles(WhichBeamSlice::This);
+
+        const int output_ratio = beam.m_output_ratio;
+
+        if (output_ratio > 1) {
+            np = amrex::partitionParticles(beam.getBeamSlice(WhichBeamSlice::This),
+                [=] AMREX_GPU_DEVICE (auto& ptd, int i) {
+                    return i < int(np) && ptd.idcpu(i) % output_ratio == 0;
+                }
+            );
+        }
+
+        if (np != 0) {
+            // copy data from GPU to IO buffer
+            auto& slice = beam.getBeamSlice(WhichBeamSlice::This);
+            const auto old_size = fd.m_spceis_data.size();
+            const auto new_size = old_size + np;
+            fd.m_spceis_data[i].resize(new_size, amrex::GrowthStrategy::Geometric);
+
+            if (fd.m_idcpu_name[i] != "") {
+                amrex::Gpu::copyAsync(amrex::Gpu::deviceToHost,
+                    slice.GetIdCPUData().begin(),
+                    slice.GetIdCPUData().begin() + np,
+                    fd.m_spceis_data[i].GetIdCPUData().data() + old_size);
+            }
+
+            for (std::size_t idx=0; idx<fd.m_real_names[i].size(); idx++) {
+                amrex::Gpu::copyAsync(amrex::Gpu::deviceToHost,
+                    slice.GetRealData(idx).begin(),
+                    slice.GetRealData(idx).begin() + np,
+                    fd.m_spceis_data[i].GetRealData(idx).data() + old_size);
+            }
+
+            for (std::size_t idx=0; idx<fd.m_int_names[i].size(); idx++) {
+                amrex::Gpu::copyAsync(amrex::Gpu::deviceToHost,
+                    slice.GetIntData(idx).begin(),
+                    slice.GetIntData(idx).begin() + np,
+                    fd.m_spceis_data[i].GetIntData(idx).begin() + old_size);
+            }
+
+            AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
+                fd.m_spceis_data[i].NumRealComps() == slice.NumRealComps() &&
+                fd.m_spceis_data[i].NumIntComps() == slice.NumIntComps(),
+                "List of real names in openPMD Writer class does not match the beam");
+        }
+    }
+}
+
+void
+Diagnostic::CopyPlasmas (DiagnosticData& fd, MultiPlasma& plasmas)
+{
+    HIPACE_PROFILE("Diagnostic::CopyPlasmas()");
+
+    for (std::size_t i = 0; i < fd.m_species_names.size(); ++i) {
+        const std::string& species_name = fd.m_species_names[i];
+        auto& plasma = plasmas.GetPlasma(species_name);
+
+        for (PlasmaParticleIterator pti(plasma); pti.isValid(); ++pti) {
+
+            uint64_t np = pti.numParticles();
+
+            if (np == 0) {
+                continue;
+            }
+
+            const auto old_size = fd.m_spceis_data.size();
+            const auto new_size = old_size + np;
+            // only one chunk of particles is expected per diagnostic
+            fd.m_spceis_data[i].resize(new_size, amrex::GrowthStrategy::Exact);
+
+            if (fd.m_idcpu_name[i] != "") {
+                amrex::Gpu::copyAsync(amrex::Gpu::deviceToHost,
+                    pti.GetParticleTile().GetIdCPUData().begin(),
+                    pti.GetParticleTile().GetIdCPUData().begin() + np,
+                    fd.m_spceis_data[i].GetIdCPUData().data() + old_size);
+            }
+
+            for (std::size_t idx=0; idx<fd.m_real_names[i].size(); idx++) {
+                amrex::Gpu::copyAsync(amrex::Gpu::deviceToHost,
+                    pti.GetParticleTile().GetRealData(idx).begin(),
+                    pti.GetParticleTile().GetRealData(idx).begin() + np,
+                    fd.m_spceis_data[i].GetRealData(idx).data() + old_size);
+            }
+
+            for (std::size_t idx=0; idx<fd.m_int_names[i].size(); idx++) {
+                amrex::Gpu::copyAsync(amrex::Gpu::deviceToHost,
+                    pti.GetParticleTile().GetIntData(idx).begin(),
+                    pti.GetParticleTile().GetIntData(idx).begin() + np,
+                    fd.m_spceis_data[i].GetIntData(idx).begin() + old_size);
+            }
+        }
+    }
+}
+
+void
+Diagnostic::CopyParticlesBoundary (DiagnosticData& fd, int islice, MultiPlasma& plasmas, MultiBeam& beam)
+{
+    HIPACE_PROFILE("Diagnostic::CopyParticlesBoundary()");
+
+    for (std::size_t i = 0; i < fd.m_species_names.size(); ++i) {
+        const std::string& species_name = fd.m_species_names[i];
+        auto& plasma = plasmas.GetPlasma(species_name);
+
+        for (PlasmaParticleIterator pti(plasma); pti.isValid(); ++pti) {
+
+            uint64_t np_left = amrex::partitionParticles(pti.GetParticleTile(),
+                [=] AMREX_GPU_DEVICE (auto& ptd, int i) {
+                    return ptd.id(ip) != PlasmaID::invalid_at_boundary;
+                }
+            );
+
+            uint64_t np = pti.numParticles() - np_left;
+
+            if (np == 0) {
+                continue;
+            }
+
+            const auto old_size = fd.m_spceis_data.size();
+            const auto new_size = old_size + np;
+            fd.m_spceis_data[i].resize(new_size, amrex::GrowthStrategy::Geometric);
+
+            auto ptd_plasma = pti.GetParticleTile().getParticleTileData();
+            auto ptd_diag = fd.m_spceis_data[i].getParticleTileData();
+
+            amrex::ParallelFor(np,
+                [=] (uint64_t ip) {
+                    ptd_diag.idcpu(ip + old_size) = ptd_plasma.idcpu(ip + np_left);
+                    ptd_diag.pos(0, ip + old_size) = ptd_plasma.pos(0, ip + np_left);
+                    ptd_diag.pos(1, ip + old_size) = ptd_plasma.pos(1, ip + np_left);
+                    ptd_diag.pos(2, ip + old_size) = islice; // TODO add dz
+                    const amrex::Real ux = ptd_plasma.rdata(PlasmaIdx::ux)[ip + np_left];
+                    const amrex::Real uy = ptd_plasma.rdata(PlasmaIdx::uy)[ip + np_left];
+                    const amrex::Real psi = ptd_plasma.rdata(PlasmaIdx::psi)[ip + np_left];
+                    const amrex::Real psi_inv = 1 / psi;
+                    const amrex::Real gamma = plasma_gamma(ux, uy, psi, psi_inv, 0);
+                    const amrex::Real uz = plasma_uz(gamma, psi);
+                    // TODO add dt/dzeta to w
+                    ptd_diag.rdata(3)[ip + old_size] = ptd_plasma.rdata(PlasmaIdx::w)[ip + np_left];
+                    ptd_diag.rdata(4)[ip + old_size] = ux;
+                    ptd_diag.rdata(5)[ip + old_size] = uy;
+                    ptd_diag.rdata(6)[ip + old_size] = uz;
+                }
+            );
+        }
+    }
+}
+
+void
 Diagnostic::FillDiagnostics (int islice, int current_N_level,
                              Fields& fields, MultiLaser& lasers,
                              MultiPlasma& plasmas, MultiBeam& beams,
@@ -729,32 +972,54 @@ Diagnostic::FillDiagnostics (int islice, int current_N_level,
                     HistogramDepositionCopy(fd, islice, plasmas, beams, field_geom);
                 }
                 break;
+            case DiagnosticData::diag_type::beam:
+                CopyBeams(fd, beams);
+                break;
+            case DiagnosticData::diag_type::plasma_slice:
+                if (islice == fd.m_plasma_output_slice) {
+                    CopyPlasmas(fd, plasmas);
+                }
+                break;
+            case DiagnosticData::diag_type::particle_boundary:
+                break;
         }
     }
 }
 
 void
-Diagnostic::FillBoundaryHistDiagnostics (int islice, MultiPlasma& plasmas, MultiBeam& beams,
-                                         const amrex::Vector<amrex::Geometry>& field_geom)
+Diagnostic::FillBoundaryDiagnostics (int islice, MultiPlasma& plasmas, MultiBeam& beams,
+                                     const amrex::Vector<amrex::Geometry>& field_geom)
 {
-    std::set<std::string> species_names_with_boundary_hist;
+    // particles where already pushed so they are on the next slice now
+    if (islice == 0) {
+        return;
+    }
 
-    // first do all histograms before removing the boundary id tag
+    std::set<std::string> species_names_with_boundary_diag;
+
+    // first do all diags before removing the boundary id tag
     for (auto& fd : m_diag_data) {
-        if (fd.m_has_output &&
-            fd.m_base_diag_type == DiagnosticData::diag_type::histogram &&
-            islice > 0 &&
+        if (!fd.m_has_output) {
+            continue;
+        }
+
+        if (fd.m_base_diag_type == DiagnosticData::diag_type::histogram &&
             fd.m_hist_exit_boundary)
         {
-            // particles where already pushed so they are on the next slice now
             HistogramDepositionCopy(fd, islice - 1, plasmas, beams, field_geom);
-            species_names_with_boundary_hist.insert(
+            species_names_with_boundary_diag.insert(
                 fd.m_hist_species_names.begin(), fd.m_hist_species_names.end());
+        }
+
+        if (fd.m_base_diag_type == DiagnosticData::diag_type::particle_boundary) {
+            CopyParticlesBoundary(fd, islice - 1, plasmas, beams);
+            species_names_with_boundary_diag.insert(
+                fd.m_species_names.begin(), fd.m_species_names.end());
         }
     }
 
     // reset id so we don't double count particles.
-    for (const auto& species_name : species_names_with_boundary_hist) {
+    for (const auto& species_name : species_names_with_boundary_diag) {
         if (plasmas.HasPlasma(species_name)) {
             auto& plasma = plasmas.GetPlasma(species_name);
             for (PlasmaParticleIterator pti(plasma); pti.isValid(); ++pti)
@@ -780,4 +1045,10 @@ Diagnostic::FillBoundaryHistDiagnostics (int islice, MultiPlasma& plasmas, Multi
                 });
         }
     }
+}
+
+void
+Diagnostic::WriteDiagnostics (int output_step, amrex::Real output_time, bool is_last_step)
+{
+
 }
