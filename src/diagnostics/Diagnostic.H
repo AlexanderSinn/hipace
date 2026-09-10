@@ -12,6 +12,7 @@
 
 #include <AMReX_MultiFab.H>
 #include <AMReX_Vector.H>
+#include <AMReX_Particles.H>
 
 #include <vector>
 
@@ -28,7 +29,10 @@ struct DiagnosticData
     enum struct diag_type {
         field,
         laser,
-        histogram
+        histogram,
+        beam,
+        plasma_slice,
+        plasma_boundary
     } m_base_diag_type = diag_type::field;  /**< which geometry the diagnostics is based on */
     /** Number of iterations between consecutive output dumps.
      * Default is 0, meaning no output */
@@ -73,6 +77,13 @@ struct DiagnosticData
     amrex::Parser m_hist_parser_w;
     amrex::ParserExecutor<9> m_hist_exe_w;
     bool m_hist_exit_boundary = false; /**< look at particles that are exiting the domain */
+
+    // particles
+
+    /** ratio of beam particles that are written to the openPMD output */
+    int m_output_ratio = 1;
+    amrex::Vector<std::string> m_species_names;
+    amrex::Vector<amrex::ParticleTileRT<amrex::Real, int>> m_spceis_data;
 };
 
 
@@ -83,10 +94,12 @@ class Diagnostic
 public:
 
     /** Read parameters from the input file */
-    void ReadParameters (int nlev, bool use_laser);
+    void ReadParameters (int nlev, bool use_laser, bool has_beam);
 
     /** \brief Determine which data to output */
-    void Initialize (int nlev, bool use_laser);
+    void Initialize (int nlev, bool use_laser,
+        const amrex::Vector<std::string>& beam_names,
+        const amrex::Vector<std::string>& plasma_names);
 
     /** \brief return names of the beams to output */
     amrex::Vector<std::string>& getBeamNames () { return m_output_beam_names; }
@@ -231,7 +244,7 @@ private:
     /** Number of iterations between consecutive output dumps.
      * Default is 0, meaning no output */
     utils::DiagPeriod m_beam_output_period = "0";
-    amrex::Vector<DiagnosticData> m_diag_data; /**< individual field diag data */
+    amrex::Vector<DiagnosticData> m_diag_data; /**< individual diag data */
 };
 
 #endif // DIAGNOSTIC_H_

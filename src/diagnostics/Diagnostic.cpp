@@ -19,40 +19,36 @@
 #include <vector>
 
 void
-Diagnostic::ReadParameters (int nlev, bool use_laser)
+Diagnostic::ReadParameters (int nlev, bool use_laser, bool has_beam)
 {
     amrex::ParmParse ppd("diagnostic");
     amrex::ParmParse pph("hipace");
 
     // Make the default diagnostic objects, subset of: lev0, lev1, lev2, laser_diag
-    amrex::Vector<std::string> field_diag_names{};
+    amrex::Vector<std::string> diag_names{};
     for (int lev = 0; lev<nlev; ++lev) {
         std::string diag_name = "lev" + std::to_string(lev);
-        field_diag_names.emplace_back(diag_name);
+        diag_names.emplace_back(diag_name);
     }
     if (use_laser) {
         std::string diag_name = "laser_diag";
-        field_diag_names.emplace_back(diag_name);
+        diag_names.emplace_back(diag_name);
+    }
+    if (has_beam) {
+        std::string diag_name = "beam_diag";
+        diag_names.emplace_back(diag_name);
     }
 
-    queryWithParser(ppd, "names", field_diag_names);
-    if (field_diag_names.size() > 0 && field_diag_names[0] == "no_field_diag") {
-        field_diag_names.clear();
+    queryWithParser(ppd, "names", diag_names);
+    if (diag_names.size() > 0 && diag_names[0] == "no_diag") {
+        diag_names.clear();
     }
 
-    m_diag_data.resize(field_diag_names.size());
+    m_diag_data.resize(diag_names.size());
 
     for(amrex::Long i = 0; i < m_diag_data.size(); ++i) {
-        m_diag_data[i].m_diag_name = field_diag_names[i];
+        m_diag_data[i].m_diag_name = diag_names[i];
     }
-
-    if (queryWithParser(pph, "output_period", m_beam_output_period.m_func_str)) {
-        amrex::Print() << "WARNING: 'hipace.output_period' is deprecated! "
-            "Use 'diagnostic.output_period' instead!\n";
-    }
-    queryWithParser(ppd, "output_period", m_beam_output_period.m_func_str);
-    queryWithParser(ppd, "beam_output_period", m_beam_output_period.m_func_str);
-    m_beam_output_period.compile();
 }
 
 bool
@@ -108,7 +104,10 @@ Diagnostic::needsTempIndividual () const {
 }
 
 void
-Diagnostic::Initialize (int nlev, bool use_laser) {
+Diagnostic::Initialize (int nlev, bool use_laser,
+        const amrex::Vector<std::string>& beam_names,
+        const amrex::Vector<std::string>& plasma_names)
+{
     amrex::ParmParse ppd("diagnostic");
     amrex::ParmParse pph("hipace");
 
@@ -117,49 +116,77 @@ Diagnostic::Initialize (int nlev, bool use_laser) {
     // for the default diagnostics, what is the default geometry
     std::map<std::string, std::string> diag_name_to_default_geometry{};
     // for each geometry name, is it based on fields or laser
-    std::map<std::string, DiagnosticData::diag_type> geometry_name_to_diag_type{};
+    std::map<std::string, DiagnosticData::diag_type> type_name_to_diag_type{};
     // for each geometry name, if its for fields what MR level is it on
-    std::map<std::string, int> geometry_name_to_level{};
+    std::map<std::string, int> type_name_to_level{};
     // for each geometry, to which index do output components map to
-    std::map<std::string, std::map<std::string, int>> geometry_name_to_output_comps_map{};
+    std::map<std::string, std::map<std::string, int>> type_name_to_output_comps_map{};
     // for each geometry, what output components are available
-    std::map<std::string, std::set<std::string>> geometry_name_to_output_comps{};
+    std::map<std::string, std::set<std::string>> type_name_to_output_comps{};
     // in case there is an error, generate a string with all available geometries and components
     std::stringstream all_comps_error_str{};
 
     for (int lev = 0; lev<nlev; ++lev) {
         std::string diag_name = "lev" + std::to_string(lev);
-        std::string geom_name = "level_" + std::to_string(lev);
-        diag_name_to_default_geometry.emplace(diag_name, geom_name);
-        geometry_name_to_diag_type.emplace(geom_name, DiagnosticData::diag_type::field);
-        geometry_name_to_level.emplace(geom_name, lev);
-        geometry_name_to_output_comps_map[geom_name] = Comps[WhichSlice::This];
+        std::string type_name = "level_" + std::to_string(lev);
+        diag_name_to_default_geometry.emplace(diag_name, type_name);
+        type_name_to_diag_type.emplace(type_name, DiagnosticData::diag_type::field);
+        type_name_to_level.emplace(type_name, lev);
+        type_name_to_output_comps_map[type_name] = Comps[WhichSlice::This];
         // add derived diagnostics for Ex and Ey
-        geometry_name_to_output_comps_map[geom_name]["Ex"] = -1;
-        geometry_name_to_output_comps_map[geom_name]["Ey"] = -2;
+        type_name_to_output_comps_map[type_name]["Ex"] = -1;
+        type_name_to_output_comps_map[type_name]["Ey"] = -2;
     }
     if (use_laser) {
         std::string diag_name = "laser_diag";
-        std::string geom_name = "laser";
-        diag_name_to_default_geometry.emplace(diag_name, geom_name);
-        geometry_name_to_diag_type.emplace(geom_name, DiagnosticData::diag_type::laser);
-        geometry_name_to_output_comps_map[geom_name]["laserEnvelope"] = WhichLaserSlice::n00j00_r;
+        std::string type_name = "laser";
+        diag_name_to_default_geometry.emplace(diag_name, type_name);
+        type_name_to_diag_type.emplace(type_name, DiagnosticData::diag_type::laser);
+        type_name_to_output_comps_map[type_name]["laserEnvelope"] = WhichLaserSlice::n00j00_r;
         // real=chi, imag=chi_initial
-        geometry_name_to_output_comps_map[geom_name]["laserChi"] = WhichLaserSlice::chi;
+        type_name_to_output_comps_map[type_name]["laserChi"] = WhichLaserSlice::chi;
         // add derived diagnostics for |a^2|
-        geometry_name_to_output_comps_map[geom_name]["|a^2|"] = -1;
+        type_name_to_output_comps_map[type_name]["|a^2|"] = -1;
     }
-    { // histogram
-        std::string geom_name = "histogram";
-        geometry_name_to_diag_type.emplace(geom_name, DiagnosticData::diag_type::histogram);
-        geometry_name_to_output_comps_map[geom_name]; // insert empty map
+    if (beam_names.size() > 0 || plasma_names.size() > 0) { // histogram
+        std::string type_name = "histogram";
+        type_name_to_diag_type.emplace(type_name, DiagnosticData::diag_type::histogram);
+        for (std::size_t i=0; i<beam_names.size(); ++i) {
+            type_name_to_output_comps_map[type_name][beam_names[i]] = 0;
+        }
+        for (std::size_t i=0; i<plasma_names.size(); ++i) {
+            type_name_to_output_comps_map[type_name][plasma_names[i]] = 0;
+        }
+    }
+    if (beam_names.size() > 0) {
+        std::string diag_name = "beam_diag";
+        std::string type_name = "beam";
+        diag_name_to_default_geometry.emplace(diag_name, type_name);
+        type_name_to_diag_type.emplace(type_name, DiagnosticData::diag_type::beam);
+        for (std::size_t i=0; i<beam_names.size(); ++i) {
+            type_name_to_output_comps_map[type_name][beam_names[i]] = 0;
+        }
+    }
+    if (plasma_names.size() > 0) {
+        std::string type_name = "plasma_slice";
+        type_name_to_diag_type.emplace(type_name, DiagnosticData::diag_type::plasma_slice);
+        for (std::size_t i=0; i<plasma_names.size(); ++i) {
+            type_name_to_output_comps_map[type_name][plasma_names[i]] = 0;
+        }
+    }
+    if (plasma_names.size() > 0) {
+        std::string type_name = "plasma_boundary";
+        type_name_to_diag_type.emplace(type_name, DiagnosticData::diag_type::plasma_boundary);
+        for (std::size_t i=0; i<plasma_names.size(); ++i) {
+            type_name_to_output_comps_map[type_name][plasma_names[i]] = 0;
+        }
     }
 
-    for (const auto& [geom_name, comp_map] : geometry_name_to_output_comps_map) {
-        all_comps_error_str << "Available components for  '"
-            << geom_name << "':\n    ";
+    for (const auto& [type_name, comp_map] : type_name_to_output_comps_map) {
+        all_comps_error_str << "Available components for type '"
+            << type_name << "':\n    ";
         for (const auto& [comp, idx] : comp_map) {
-            geometry_name_to_output_comps[geom_name].insert(comp);
+            type_name_to_output_comps[type_name].insert(comp);
             all_comps_error_str << comp << " ";
         }
         all_comps_error_str << "\n";
@@ -173,25 +200,25 @@ Diagnostic::Initialize (int nlev, bool use_laser) {
     for (auto& fd : m_diag_data) {
         amrex::ParmParse pp(fd.m_diag_name);
 
-        std::string base_geom_name = "level_0";
+        std::string base_type_name = "level_0";
 
         if (diag_name_to_default_geometry.count(fd.m_diag_name) > 0) {
-            base_geom_name = diag_name_to_default_geometry.at(fd.m_diag_name);
+            base_type_name = diag_name_to_default_geometry.at(fd.m_diag_name);
         }
 
-        // backward compatibility
-        queryWithParserAlt(pp, "base_geometry", base_geom_name, ppd);
-        DeprecatedInput(fd.m_diag_name, "level", "base_geometry");
+        DeprecatedInput(fd.m_diag_name, "level", "type");
+        DeprecatedInput(fd.m_diag_name, "base_geometry", "type");
+        queryWithParserAlt(pp, "type", base_type_name, ppd);
 
-        if (geometry_name_to_diag_type.count(base_geom_name) > 0) {
-            fd.m_base_diag_type = geometry_name_to_diag_type.at(base_geom_name);
+        if (type_name_to_diag_type.count(base_type_name) > 0) {
+            fd.m_base_diag_type = type_name_to_diag_type.at(base_type_name);
         } else {
-            amrex::Abort("Unknown diagnostics base_geometry: '" + base_geom_name + "'!\n" +
+            amrex::Abort("Unknown diagnostics type: '" + base_type_name + "'!\n" +
                          all_comps_error_str.str());
         }
 
         if (fd.m_base_diag_type == DiagnosticData::diag_type::field) {
-            fd.m_level = geometry_name_to_level.at(base_geom_name);
+            fd.m_level = type_name_to_level.at(base_type_name);
         }
 
         // general parametes for all base geometries
@@ -203,178 +230,201 @@ Diagnostic::Initialize (int nlev, bool use_laser) {
         queryWithParserAlt(pp, "output_period", fd.m_output_period.m_func_str, ppd);
         fd.m_output_period.compile();
 
-        fd.m_use_custom_size_lo = queryWithParserAlt(pp, "patch_lo", fd.m_diag_lo, ppd);
-        fd.m_use_custom_size_hi = queryWithParserAlt(pp, "patch_hi", fd.m_diag_hi, ppd);
+        // parameters for all particle based diagnostics
 
-        amrex::Array<int,3> diag_coarsen_arr{1,1,1};
-        queryWithParserAlt(pp, "coarsening", diag_coarsen_arr, ppd);
-        fd.m_diag_coarsen = amrex::IntVect(diag_coarsen_arr);
-        AMREX_ALWAYS_ASSERT_WITH_MESSAGE(fd.m_diag_coarsen.min() >= 1,
-                    "Coarsening ratio must be >= 1");
+        if (fd.m_base_diag_type == DiagnosticData::diag_type::beam ||
+            fd.m_base_diag_type == DiagnosticData::diag_type::plasma_slice ||
+            fd.m_base_diag_type == DiagnosticData::diag_type::plasma_boundary)
+        {
+            for (auto& c : type_name_to_output_comps[base_type_name]) {
+                fd.m_species_names.push_back(c);
+            }
 
-        queryWithParserAlt(pp, "include_ghost_cells", fd.m_include_ghost_cells, ppd);
+            queryWithParser(pp, "species", fd.m_species_names);
 
-        // parameters for specific base geometries
+            for (auto& c : fd.m_species_names) {
+                if (type_name_to_output_comps[base_type_name].count(c) == 0) {
+                    amrex::Abort("Unknown diagnostics species '" + c +
+                                "' in type '" + base_type_name + "'!\n" +
+                                all_comps_error_str.str());
+                }
+            }
+        }
 
-        switch (fd.m_base_diag_type) {
-            case DiagnosticData::diag_type::field:
-            case DiagnosticData::diag_type::laser: {
-                std::string str_type;
-                getWithParserAlt(pp, "diag_type", str_type, ppd);
-                if (str_type == "xyz"){
-                    fd.m_remove_axis = {0, 0, 0};
-                    fd.m_axis_labels = {"x", "y", "z"};
-                } else if (str_type == "xz") {
-                    fd.m_remove_axis = {0, 1, 0};
-                    fd.m_axis_labels = {"x", "z"};
-                } else if (str_type == "yz") {
-                    fd.m_remove_axis = {1, 0, 0};
-                    fd.m_axis_labels = {"y", "z"};
-                } else if (str_type == "xy_integrated") {
+        // parameters for all mesh based diagnostics
+
+        if (fd.m_base_diag_type == DiagnosticData::diag_type::field ||
+            fd.m_base_diag_type == DiagnosticData::diag_type::laser ||
+            fd.m_base_diag_type == DiagnosticData::diag_type::histogram)
+        {
+            fd.m_use_custom_size_lo = queryWithParserAlt(pp, "patch_lo", fd.m_diag_lo, ppd);
+            fd.m_use_custom_size_hi = queryWithParserAlt(pp, "patch_hi", fd.m_diag_hi, ppd);
+
+            amrex::Array<int,3> diag_coarsen_arr{1,1,1};
+            queryWithParserAlt(pp, "coarsening", diag_coarsen_arr, ppd);
+            fd.m_diag_coarsen = amrex::IntVect(diag_coarsen_arr);
+            AMREX_ALWAYS_ASSERT_WITH_MESSAGE(fd.m_diag_coarsen.min() >= 1,
+                        "Coarsening ratio must be >= 1");
+
+            queryWithParserAlt(pp, "include_ghost_cells", fd.m_include_ghost_cells, ppd);
+        }
+
+        // get histogram specific inputs
+
+        if (fd.m_base_diag_type == DiagnosticData::diag_type::histogram)
+        {
+            getWithParser(pp, "hist_species_names", fd.m_hist_species_names);
+            getWithParser(pp, "hist_num_bins", fd.m_hist_num_bins);
+            getWithParser(pp, "hist_bins_lo", fd.m_hist_bins_lo);
+            getWithParser(pp, "hist_bins_hi", fd.m_hist_bins_hi);
+            bool add_z_axis = false;
+            queryWithParser(pp, "hist_add_z_axis", add_z_axis);
+            fd.m_integrate_along_z = !add_z_axis;
+            queryWithParser(pp, "hist_exit_boundary", fd.m_hist_exit_boundary);
+
+            AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
+                fd.m_hist_num_bins.size() == 1 || fd.m_hist_num_bins.size() == 2,
+                "hist_num_bins must have either one or two values"
+            );
+            fd.m_hist_num_dims = fd.m_hist_num_bins.size();
+            AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
+                fd.m_hist_bins_lo.size() == fd.m_hist_num_dims &&
+                fd.m_hist_bins_hi.size() == fd.m_hist_num_dims,
+                "hist_bins_lo and hist_bins_hi must have the same "
+                "number of values as hist_num_bins"
+            );
+
+            std::string func1;
+            getWithParser(pp, "hist_function", func1);
+            fd.m_hist_exe_q1 = makeFunctionWithParser<9>(func1, fd.m_hist_parser_q1,
+                {"x", "y", "z", "ux", "uy", "uz", "ga_psi", "w", "ion_lev"});
+
+            if (fd.m_hist_num_dims == 2) {
+                std::string func2;
+                getWithParser(pp, "hist_function2", func2);
+                fd.m_hist_exe_q2 = makeFunctionWithParser<9>(func2, fd.m_hist_parser_q2,
+                    {"x", "y", "z", "ux", "uy", "uz", "ga_psi", "w", "ion_lev"});
+
+                if (fd.m_integrate_along_z) {
                     fd.m_remove_axis = {0, 0, 1};
-                    fd.m_axis_labels = {"x", "y"};
-                    fd.m_integrate_along_z = true;
+                    fd.m_axis_labels = {func1, func2};
                 } else {
-                    amrex::Abort("Unknown diagnostics type: must be xyz, xz, yz or xy_integrated.");
+                    fd.m_remove_axis = {0, 0, 0};
+                    fd.m_axis_labels = {func1, func2, "z"};
                 }
-
-                for (int i=0; i<3; ++i) {
-                    if (fd.m_remove_axis[i]) {
-                        fd.m_diag_coarsen[i] = 1;
-                    }
-                }
-
-            }
-            break;
-            case DiagnosticData::diag_type::histogram: {
-                getWithParser(pp, "hist_species_names", fd.m_hist_species_names);
-                getWithParser(pp, "hist_num_bins", fd.m_hist_num_bins);
-                getWithParser(pp, "hist_bins_lo", fd.m_hist_bins_lo);
-                getWithParser(pp, "hist_bins_hi", fd.m_hist_bins_hi);
-                bool add_z_axis = false;
-                queryWithParser(pp, "hist_add_z_axis", add_z_axis);
-                fd.m_integrate_along_z = !add_z_axis;
-                queryWithParser(pp, "hist_exit_boundary", fd.m_hist_exit_boundary);
-
-                AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
-                    fd.m_hist_num_bins.size() == 1 || fd.m_hist_num_bins.size() == 2,
-                    "hist_num_bins must have either one or two values"
-                );
-                fd.m_hist_num_dims = fd.m_hist_num_bins.size();
-                AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
-                    fd.m_hist_bins_lo.size() == fd.m_hist_num_dims &&
-                    fd.m_hist_bins_hi.size() == fd.m_hist_num_dims,
-                    "hist_bins_lo and hist_bins_hi must have the same "
-                    "number of values as hist_num_bins"
-                );
-
-                std::string func1;
-                getWithParser(pp, "hist_function", func1);
-                fd.m_hist_exe_q1 = makeFunctionWithParser<9>(func1, fd.m_hist_parser_q1,
-                    {"x", "y", "z", "ux", "uy", "uz", "ga_psi", "w", "ion_lev"});
-
-                if (fd.m_hist_num_dims == 2) {
-                    std::string func2;
-                    getWithParser(pp, "hist_function2", func2);
-                    fd.m_hist_exe_q2 = makeFunctionWithParser<9>(func2, fd.m_hist_parser_q2,
-                        {"x", "y", "z", "ux", "uy", "uz", "ga_psi", "w", "ion_lev"});
-
-                    if (fd.m_integrate_along_z) {
-                        fd.m_remove_axis = {0, 0, 1};
-                        fd.m_axis_labels = {func1, func2};
-                    } else {
-                        fd.m_remove_axis = {0, 0, 0};
-                        fd.m_axis_labels = {func1, func2, "z"};
-                    }
-                } else {
-                    if (fd.m_integrate_along_z) {
-                        fd.m_remove_axis = {0, 1, 1};
-                        fd.m_axis_labels = {func1};
-                    } else {
-                        fd.m_remove_axis = {0, 1, 0};
-                        fd.m_axis_labels = {func1, "z"};
-                    }
-                }
-
-                std::string funcw = "w";
-                queryWithParser(pp, "hist_weight", funcw);
-                fd.m_hist_exe_w = makeFunctionWithParser<9>(funcw, fd.m_hist_parser_w,
-                    {"x", "y", "z", "ux", "uy", "uz", "ga_psi", "w", "ion_lev"});
-
-                fd.m_nfields = fd.m_hist_species_names.size();
-                fd.m_comps_output = fd.m_hist_species_names;
-
-                fd.m_diag_coarsen[0] = 1;
-                fd.m_diag_coarsen[1] = 1;
-            }
-            break;
-        }
-
-        if (fd.m_base_diag_type == DiagnosticData::diag_type::histogram) {
-            // no need to have field_data with histogram
-            continue;
-        }
-
-        // get and parse field_data parameter
-
-        amrex::Vector<std::string> use_comps{};
-        const bool use_local_comps = queryWithParser(pp, "field_data", use_comps);
-        if (!use_local_comps) {
-            queryWithParser(ppd, "field_data", use_comps);
-        }
-
-        // set to store all used components to avoid duplicates
-        std::set<std::string> comps_set{};
-
-        if (use_comps.empty()) {
-            // by default output all components
-            use_comps.push_back("all");
-        }
-
-        // iterate through the user-provided components from left to right
-        for (const std::string& comp_name : use_comps) {
-            if (comp_name == "all" || comp_name == "All") {
-                is_global_comp_used[comp_name] = true;
-                // insert all available components
-                comps_set.insert(geometry_name_to_output_comps[base_geom_name].begin(),
-                                 geometry_name_to_output_comps[base_geom_name].end());
-            } else if (comp_name == "none" || comp_name == "None") {
-                is_global_comp_used[comp_name] = true;
-                // remove all components
-                comps_set.clear();
-            } else if (geometry_name_to_output_comps[base_geom_name].count(comp_name) > 0) {
-                is_global_comp_used[comp_name] = true;
-                // insert requested component
-                comps_set.insert(comp_name);
-            } else if (comp_name.find("remove_") == 0 &&
-                       geometry_name_to_output_comps[base_geom_name].count(
-                       comp_name.substr(std::string("remove_").size(), comp_name.size())) > 0) {
-                is_global_comp_used[comp_name] = true;
-                // remove requested component
-                comps_set.erase(comp_name.substr(std::string("remove_").size(), comp_name.size()));
-            } else if (use_local_comps) {
-                // if field_data was specified through <diag name>,
-                // assert that all components exist in the geometry
-                amrex::Abort("Unknown diagnostics field_data '" + comp_name +
-                             "' in base_geometry '" + base_geom_name + "'!\n" +
-                             all_comps_error_str.str());
             } else {
-                // if field_data was specified through diagnostic,
-                // check later that all components are at least used by one of the diagnostics
-                is_global_comp_used.try_emplace(comp_name, false);
+                if (fd.m_integrate_along_z) {
+                    fd.m_remove_axis = {0, 1, 1};
+                    fd.m_axis_labels = {func1};
+                } else {
+                    fd.m_remove_axis = {0, 1, 0};
+                    fd.m_axis_labels = {func1, "z"};
+                }
             }
+
+            std::string funcw = "w";
+            queryWithParser(pp, "hist_weight", funcw);
+            fd.m_hist_exe_w = makeFunctionWithParser<9>(funcw, fd.m_hist_parser_w,
+                {"x", "y", "z", "ux", "uy", "uz", "ga_psi", "w", "ion_lev"});
+
+            fd.m_nfields = fd.m_hist_species_names.size();
+            fd.m_comps_output = fd.m_hist_species_names;
+
+            fd.m_diag_coarsen[0] = 1;
+            fd.m_diag_coarsen[1] = 1;
         }
 
-        fd.m_comps_output.assign(comps_set.begin(), comps_set.end());
-        fd.m_nfields = fd.m_comps_output.size();
+        // get and parse dimensions and field_data parameter for field and laser diagnostics
 
-        // copy the indexes of m_comps_output to the GPU
-        fd.m_comps_output_idx.resize(fd.m_nfields);
-        for (int i = 0; i < fd.m_nfields; ++i) {
-            fd.m_comps_output_idx[i] =
-                geometry_name_to_output_comps_map.at(base_geom_name).at(fd.m_comps_output[i]);
+        if (fd.m_base_diag_type == DiagnosticData::diag_type::field ||
+            fd.m_base_diag_type == DiagnosticData::diag_type::laser)
+        {
+            std::string str_type;
+            DeprecatedInput(fd.m_diag_name, "diag_type", "dimensions");
+            getWithParserAlt(pp, "dimensions", str_type, ppd);
+            if (str_type == "xyz"){
+                fd.m_remove_axis = {0, 0, 0};
+                fd.m_axis_labels = {"x", "y", "z"};
+            } else if (str_type == "xz") {
+                fd.m_remove_axis = {0, 1, 0};
+                fd.m_axis_labels = {"x", "z"};
+            } else if (str_type == "yz") {
+                fd.m_remove_axis = {1, 0, 0};
+                fd.m_axis_labels = {"y", "z"};
+            } else if (str_type == "xy_integrated") {
+                fd.m_remove_axis = {0, 0, 1};
+                fd.m_axis_labels = {"x", "y"};
+                fd.m_integrate_along_z = true;
+            } else {
+                amrex::Abort("Unknown diagnostics type: must be xyz, xz, yz or xy_integrated.");
+            }
+
+            for (int i=0; i<3; ++i) {
+                if (fd.m_remove_axis[i]) {
+                    fd.m_diag_coarsen[i] = 1;
+                }
+            }
+
+            amrex::Vector<std::string> use_comps{};
+            const bool use_local_comps = queryWithParser(pp, "field_data", use_comps);
+            if (!use_local_comps) {
+                queryWithParser(ppd, "field_data", use_comps);
+            }
+
+            // set to store all used components to avoid duplicates
+            std::set<std::string> comps_set{};
+
+            if (use_comps.empty()) {
+                // by default output all components
+                use_comps.push_back("all");
+            }
+
+            // iterate through the user-provided components from left to right
+            for (const std::string& comp_name : use_comps) {
+                if (comp_name == "all" || comp_name == "All") {
+                    is_global_comp_used[comp_name] = true;
+                    // insert all available components
+                    comps_set.insert(type_name_to_output_comps[base_type_name].begin(),
+                                    type_name_to_output_comps[base_type_name].end());
+                } else if (comp_name == "none" || comp_name == "None") {
+                    is_global_comp_used[comp_name] = true;
+                    // remove all components
+                    comps_set.clear();
+                } else if (type_name_to_output_comps[base_type_name].count(comp_name) > 0) {
+                    is_global_comp_used[comp_name] = true;
+                    // insert requested component
+                    comps_set.insert(comp_name);
+                } else if (comp_name.find("remove_") == 0 &&
+                        type_name_to_output_comps[base_type_name].count(
+                        comp_name.substr(std::string("remove_").size(), comp_name.size())) > 0) {
+                    is_global_comp_used[comp_name] = true;
+                    // remove requested component
+                    comps_set.erase(
+                        comp_name.substr(std::string("remove_").size(), comp_name.size()));
+                } else if (use_local_comps) {
+                    // if field_data was specified through <diag name>,
+                    // assert that all components exist in the geometry
+                    amrex::Abort("Unknown diagnostics field_data '" + comp_name +
+                                "' in type '" + base_type_name + "'!\n" +
+                                all_comps_error_str.str());
+                } else {
+                    // if field_data was specified through diagnostic,
+                    // check later that all components are at least used by one of the diagnostics
+                    is_global_comp_used.try_emplace(comp_name, false);
+                }
+            }
+
+            fd.m_comps_output.assign(comps_set.begin(), comps_set.end());
+            fd.m_nfields = fd.m_comps_output.size();
+
+            // copy the indexes of m_comps_output to the GPU
+            fd.m_comps_output_idx.resize(fd.m_nfields);
+            for (int i = 0; i < fd.m_nfields; ++i) {
+                fd.m_comps_output_idx[i] =
+                    type_name_to_output_comps_map.at(base_type_name).at(fd.m_comps_output[i]);
+            }
+            fd.m_comps_output_idx.copyToDeviceAsync();
         }
-        fd.m_comps_output_idx.copyToDeviceAsync();
     }
 
     // check that all components are at least used by one of the diagnostics

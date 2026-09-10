@@ -1187,11 +1187,11 @@ Field diagnostics
 * ``diagnostic.names`` (`string`) optional (default `lev0`)
     The names of all field diagnostics, separated by a space.
     Multiple diagnostics can be used to limit the output to only a few relevant regions to save on file size.
-    To run without field diagnostics, choose the name ``no_field_diag``.
+    To run without field diagnostics, choose the name ``no_diag``.
     Depending on whether mesh refinement or a laser is used, the default becomes
     a subset of ``lev0 lev1 lev2 laser_diag``.
 
-* ``<diag name> or diagnostic.base_geometry`` (`string`) optional (default `level_0`)
+* ``<diag name> or diagnostic.type`` (`string`) optional (default `level_0`)
     Which geometry the diagnostics should be based on.
     Available geometries are `level_0`, `level_1`, `level_2`, `laser` and `histogram`,
     depending on if MR or a laser is used.
@@ -1203,7 +1203,7 @@ Field diagnostics
     If ``diagnostic.output_period`` is defined, that value is used as the default for this.
     See the documentation of ``diagnostic.output_period`` for more details.
 
-* ``<diag name> or diagnostic.diag_type`` (`string`)
+* ``<diag name> or diagnostic.dimensions`` (`string`)
     Type of field output. Available options are `xyz`, `xz`, `yz` and `xy_integrated`.
     `xyz` generates a 3D field output.
     Use 3D output with parsimony, it may increase disk Space usage and simulation time significantly.
@@ -1278,9 +1278,9 @@ Particle Histogram diagnostics
 This diagnostic allows the direct computation of histograms of arbitrary particle
 quantities during the simulation runtime. It supports both plasma and beam particles.
 It is part of the standard field diagnostic and is enabled by setting
-``<diag name>.base_geometry = histogram``. Histograms may have one or two user-defined axes.
+``<diag name>.type = histogram``. Histograms may have one or two user-defined axes.
 Optionally, the simulation z-axis can be included as an additional axis or integrated over.
-All field diagnostic parameters apply, except ``field_data`` and ``diag_type``.
+All field diagnostic parameters apply, except ``field_data`` and ``dimensions``.
 For example, ``patch_lo`` and ``patch_hi`` can be used to restrict the particles included in
 the histogram in coordinate space, but do not modify the histogram axes.
 Each particle species produces a separate histogram that is output as

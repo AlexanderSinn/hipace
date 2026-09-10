@@ -84,7 +84,7 @@ Hipace::Hipace () :
     m_multi_laser.ReadParameters();
     m_grid_current.ReadParameters();
     m_grid_ionization.ReadParameters();
-    m_diags.ReadParameters(m_N_level, m_multi_laser.UseLaser());
+    m_diags.ReadParameters(m_N_level, m_multi_laser.UseLaser(), m_multi_beam.get_nbeams() > 0);
 #ifdef HIPACE_USE_OPENPMD
     m_openpmd_writer.ReadParameters();
 #endif
@@ -307,7 +307,8 @@ Hipace::InitData ()
         m_fields.AllocData(lev, m_3D_geom[lev], m_slice_ba[lev], m_slice_dm[lev]);
     }
 
-    m_diags.Initialize(m_N_level, m_multi_laser.UseLaser());
+    m_diags.Initialize(m_N_level, m_multi_laser.UseLaser(),
+        m_multi_beam.m_names, m_multi_plasma.m_names);
 
     m_initial_time = m_multi_beam.InitData(m_3D_geom[0]);
 
