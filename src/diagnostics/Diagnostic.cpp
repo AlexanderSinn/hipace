@@ -155,10 +155,10 @@ Diagnostic::Initialize (int nlev, bool use_laser,
     if (beam_names.size() > 0 || plasma_names.size() > 0) { // histogram
         std::string type_name = "histogram";
         type_name_to_diag_type.emplace(type_name, DiagnosticData::diag_type::histogram);
-        for (std::size_t i=0; i<beam_names.size(); ++i) {
+        for (amrex::Long i=0; i<beam_names.size(); ++i) {
             type_name_to_output_comps_map[type_name][beam_names[i]] = 0;
         }
-        for (std::size_t i=0; i<plasma_names.size(); ++i) {
+        for (amrex::Long i=0; i<plasma_names.size(); ++i) {
             type_name_to_output_comps_map[type_name][plasma_names[i]] = 0;
         }
     }
@@ -167,24 +167,24 @@ Diagnostic::Initialize (int nlev, bool use_laser,
         std::string type_name = "beam";
         diag_name_to_default_geometry.emplace(diag_name, type_name);
         type_name_to_diag_type.emplace(type_name, DiagnosticData::diag_type::beam);
-        for (std::size_t i=0; i<beam_names.size(); ++i) {
+        for (amrex::Long i=0; i<beam_names.size(); ++i) {
             type_name_to_output_comps_map[type_name][beam_names[i]] = 0;
         }
     }
     if (plasma_names.size() > 0) {
         std::string type_name = "plasma_slice";
         type_name_to_diag_type.emplace(type_name, DiagnosticData::diag_type::plasma_slice);
-        for (std::size_t i=0; i<plasma_names.size(); ++i) {
+        for (amrex::Long i=0; i<plasma_names.size(); ++i) {
             type_name_to_output_comps_map[type_name][plasma_names[i]] = 0;
         }
     }
     if (plasma_names.size() > 0) {
         std::string type_name = "particle_boundary";
         type_name_to_diag_type.emplace(type_name, DiagnosticData::diag_type::particle_boundary);
-        for (std::size_t i=0; i<beam_names.size(); ++i) {
+        for (amrex::Long i=0; i<beam_names.size(); ++i) {
             type_name_to_output_comps_map[type_name][beam_names[i]] = 0;
         }
-        for (std::size_t i=0; i<plasma_names.size(); ++i) {
+        for (amrex::Long i=0; i<plasma_names.size(); ++i) {
             type_name_to_output_comps_map[type_name][plasma_names[i]] = 0;
         }
     }
@@ -801,7 +801,7 @@ Diagnostic::CopyBeams (DiagnosticData& fd, MultiBeam& beams)
 {
     HIPACE_PROFILE("Diagnostic::CopyBeams()");
 
-    for (std::size_t i = 0; i < fd.m_species_names.size(); ++i) {
+    for (amrex::Long i = 0; i < fd.m_species_names.size(); ++i) {
         const std::string& species_name = fd.m_species_names[i];
         auto& beam = beams.getBeam(species_name);
 
@@ -811,8 +811,8 @@ Diagnostic::CopyBeams (DiagnosticData& fd, MultiBeam& beams)
 
         if (output_ratio > 1) {
             np = amrex::partitionParticles(beam.getBeamSlice(WhichBeamSlice::This),
-                [=] AMREX_GPU_DEVICE (auto& ptd, int i) {
-                    return i < int(np) && ptd.idcpu(i) % output_ratio == 0;
+                [=] AMREX_GPU_DEVICE (auto& ptd, int ip) {
+                    return ip < int(np) && ptd.idcpu(ip) % output_ratio == 0;
                 }
             );
         }
@@ -858,7 +858,7 @@ Diagnostic::CopyPlasmas (DiagnosticData& fd, MultiPlasma& plasmas)
 {
     HIPACE_PROFILE("Diagnostic::CopyPlasmas()");
 
-    for (std::size_t i = 0; i < fd.m_species_names.size(); ++i) {
+    for (amrex::Long i = 0; i < fd.m_species_names.size(); ++i) {
         const std::string& species_name = fd.m_species_names[i];
         auto& plasma = plasmas.GetPlasma(species_name);
 
@@ -900,18 +900,19 @@ Diagnostic::CopyPlasmas (DiagnosticData& fd, MultiPlasma& plasmas)
 }
 
 void
-Diagnostic::CopyParticlesBoundary (DiagnosticData& fd, int islice, MultiPlasma& plasmas, MultiBeam& beam)
+Diagnostic::CopyParticlesBoundary (DiagnosticData& fd, int islice, MultiPlasma& plasmas,
+                                   [[maybe_unused]] MultiBeam& beam)
 {
     HIPACE_PROFILE("Diagnostic::CopyParticlesBoundary()");
 
-    for (std::size_t i = 0; i < fd.m_species_names.size(); ++i) {
+    for (amrex::Long i = 0; i < fd.m_species_names.size(); ++i) {
         const std::string& species_name = fd.m_species_names[i];
         auto& plasma = plasmas.GetPlasma(species_name);
 
         for (PlasmaParticleIterator pti(plasma); pti.isValid(); ++pti) {
 
             uint64_t np_left = amrex::partitionParticles(pti.GetParticleTile(),
-                [=] AMREX_GPU_DEVICE (auto& ptd, int i) {
+                [=] AMREX_GPU_DEVICE (auto& ptd, int ip) {
                     return ptd.id(ip) != PlasmaID::invalid_at_boundary;
                 }
             );
@@ -930,7 +931,7 @@ Diagnostic::CopyParticlesBoundary (DiagnosticData& fd, int islice, MultiPlasma& 
             auto ptd_diag = fd.m_spceis_data[i].getParticleTileData();
 
             amrex::ParallelFor(np,
-                [=] (uint64_t ip) {
+                [=] AMREX_GPU_DEVICE (uint64_t ip) {
                     ptd_diag.idcpu(ip + old_size) = ptd_plasma.idcpu(ip + np_left);
                     ptd_diag.pos(0, ip + old_size) = ptd_plasma.pos(0, ip + np_left);
                     ptd_diag.pos(1, ip + old_size) = ptd_plasma.pos(1, ip + np_left);
@@ -1048,7 +1049,13 @@ Diagnostic::FillBoundaryDiagnostics (int islice, MultiPlasma& plasmas, MultiBeam
 }
 
 void
-Diagnostic::WriteDiagnostics (int output_step, amrex::Real output_time, bool is_last_step)
+Diagnostic::WriteDiagnostics (
+    const MultiLaser& multi_laser, const MultiBeam& beams, const MultiPlasma& plasmas,
+    const amrex::Geometry& geom, const amrex::Real physical_time, const int output_step
+)
 {
-
+#ifdef HIPACE_USE_OPENPMD
+    m_openpmd_writer.WriteDiagnostics(m_diag_data, multi_laser, beams, plasmas, geom,
+        physical_time, output_step);
+#endif
 }

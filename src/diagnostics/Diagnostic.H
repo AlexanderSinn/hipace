@@ -178,12 +178,17 @@ public:
 
     /** \brief Write diagnostics to file
      *
-     * \param[in] output_step current step index
-     * \param[in] output_time physical time of the current step
-     * \param[in] is_last_step if this is the last time step of the simulation
+     * \param[in] multi_laser multi laser to get lambda0
+     * \param[in] beams multi beam to get charge and mass
+     * \param[in] plasmas multi plamsa to get charge and mass
+     * \param[in] geom 3D Geometry of the simulation, to get the cell size
+     * \param[in] physical_time Physical time of the current iteration.
+     * \param[in] output_step current iteration to be written to file
      */
     void
-    WriteDiagnostics (int output_step, amrex::Real output_time, bool is_last_step);
+    WriteDiagnostics (const MultiLaser& multi_laser, const MultiBeam& beams,
+                      const MultiPlasma& plasmas, const amrex::Geometry& geom,
+                      const amrex::Real physical_time, const int output_step);
 
 private:
 
@@ -239,7 +244,7 @@ private:
                              MultiPlasma& plasmas, MultiBeam& beams,
                              const amrex::Vector<amrex::Geometry>& field_geom);
 
-
+public: // for CUDA device lambda
     void
     CopyBeams (DiagnosticData& fd, MultiBeam& beams);
 
@@ -248,6 +253,7 @@ private:
 
     void
     CopyParticlesBoundary (DiagnosticData& fd, int islice, MultiPlasma& plasmas, MultiBeam& beam);
+private:
 
     amrex::Vector<DiagnosticData> m_diag_data; /**< individual diag data */
 #ifdef HIPACE_USE_OPENPMD
