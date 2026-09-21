@@ -269,12 +269,6 @@ OpenPMDWriter::WriteParticleData (DiagnosticData& fd, openPMD::Iteration& iterat
 
         SetupAttributes(species_name, particle_species, np_total, beams, plasmas, geom);
 
-        if (np_total == 0) {
-            amrex::ErrorStream() << "WARNING: Species '" << species_name
-                                 << "' has no particles! No output will be written.\n";
-            continue;
-        }
-
         std::set<std::string> addedRecords;
 
         auto dataset_idcpu = openPMD::Dataset(openPMD::determineDatatype<uint64_t>(), {np_total});
@@ -295,7 +289,9 @@ OpenPMDWriter::WriteParticleData (DiagnosticData& fd, openPMD::Iteration& iterat
             auto& currRecordComp = currRecord[component_name];
             // not read until the data is flushed
             currRecordComp.resetDataset(dataset_idcpu);
-            currRecordComp.storeChunkRaw(uint64_data, {0ull}, {np_total});
+            if (np_total != 0) {
+                currRecordComp.storeChunkRaw(uint64_data, {0ull}, {np_total});
+            }
         }
 
         auto dataset_real = openPMD::Dataset(openPMD::determineDatatype<amrex::Real>(), {np_total});
@@ -307,8 +303,10 @@ OpenPMDWriter::WriteParticleData (DiagnosticData& fd, openPMD::Iteration& iterat
             auto& currRecordComp = currRecord[component_name];
             // not read until the data is flushed
             currRecordComp.resetDataset(dataset_real);
-            currRecordComp.storeChunkRaw(
-                fd.m_spceis_data[i].GetRealData(idx).data(), {0ull}, {np_total});
+            if (np_total != 0) {
+                currRecordComp.storeChunkRaw(
+                    fd.m_spceis_data[i].GetRealData(idx).data(), {0ull}, {np_total});
+            }
         }
 
         auto dataset_int = openPMD::Dataset(openPMD::determineDatatype<int>(), {np_total});
@@ -320,8 +318,10 @@ OpenPMDWriter::WriteParticleData (DiagnosticData& fd, openPMD::Iteration& iterat
             auto& currRecordComp = currRecord[component_name];
             // not read until the data is flushed
             currRecordComp.resetDataset(dataset_int);
-            currRecordComp.storeChunkRaw(
-                fd.m_spceis_data[i].GetIntData(idx).data(), {0ull}, {np_total});
+            if (np_total != 0) {
+                currRecordComp.storeChunkRaw(
+                    fd.m_spceis_data[i].GetIntData(idx).data(), {0ull}, {np_total});
+            }
         }
     }
 }

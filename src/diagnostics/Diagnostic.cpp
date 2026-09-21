@@ -498,13 +498,25 @@ Diagnostic::Initialize (int nlev, bool use_laser,
         );
     }
 
-    // if there are multiple diagnostic objects with the same m_base_diag_type (colliding component
+    // if there are multiple diagnostic objects with the same m_comps_output (colliding component
     // names), append the name of the diagnostic object to the component name in the output
+    std::map<std::string, int> num_occurrences;
+
     for (auto& fd : m_diag_data) {
-        if (fd.m_base_diag_type == DiagnosticData::diag_type::histogram ||
-            1 < std::count_if(m_diag_data.begin(), m_diag_data.end(), [&] (auto& fd2) {
-            return fd.m_base_diag_type == fd2.m_base_diag_type;
-        })) {
+        for (auto& comp_name : fd.m_comps_output) {
+            num_occurrences[comp_name] += 1;
+        }
+    }
+
+    for (auto& fd : m_diag_data) {
+        bool has_collisions = false;
+        for (auto& comp_name : fd.m_comps_output) {
+            if (num_occurrences[comp_name] > 1) {
+                has_collisions = true;
+                break;
+            }
+        }
+        if (has_collisions) {
             for (auto& comp_name : fd.m_comps_output) {
                 comp_name += "_" + fd.m_diag_name;
             }
