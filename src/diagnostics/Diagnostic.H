@@ -252,7 +252,8 @@ public: // for CUDA device lambda
     CopyPlasmas (DiagnosticData& fd, MultiPlasma& plasmas);
 
     void
-    CopyParticlesBoundary (DiagnosticData& fd, int islice, MultiPlasma& plasmas, MultiBeam& beam);
+    CopyParticlesBoundary (DiagnosticData& fd, int islice, MultiPlasma& plasmas, MultiBeam& beam,
+                           const amrex::Vector<amrex::Geometry>& gm);
 private:
 
     amrex::Vector<DiagnosticData> m_diag_data; /**< individual diag data */

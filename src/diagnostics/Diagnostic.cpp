@@ -901,7 +901,8 @@ Diagnostic::CopyPlasmas (DiagnosticData& fd, MultiPlasma& plasmas)
 
 void
 Diagnostic::CopyParticlesBoundary (DiagnosticData& fd, int islice, MultiPlasma& plasmas,
-                                   [[maybe_unused]] MultiBeam& beam)
+                                   [[maybe_unused]] MultiBeam& beam,
+                                   const amrex::Vector<amrex::Geometry>& gm)
 {
     HIPACE_PROFILE("Diagnostic::CopyParticlesBoundary()");
 
@@ -929,21 +930,26 @@ Diagnostic::CopyParticlesBoundary (DiagnosticData& fd, int islice, MultiPlasma& 
 
             auto ptd_plasma = pti.GetParticleTile().getParticleTileData();
             auto ptd_diag = fd.m_spceis_data[i].getParticleTileData();
+            const amrex::Real plasma_z = gm[0].ProbLo(2) +
+                (islice + amrex::Real(1) - gm[0].Domain().smallEnd(2))*gm[0].CellSize(2);
+            const amrex::Real dzeta_inv = gm[0].InvCellSize(2);
+            const amrex::Real dt = Hipace::GetInstance().m_dt;
+            const amrex::Real weight_factor = dt * get_phys_const().c * dzeta_inv;
 
             amrex::ParallelFor(np,
                 [=] AMREX_GPU_DEVICE (uint64_t ip) {
                     ptd_diag.idcpu(ip + old_size) = ptd_plasma.idcpu(ip + np_left);
                     ptd_diag.pos(0, ip + old_size) = ptd_plasma.pos(0, ip + np_left);
                     ptd_diag.pos(1, ip + old_size) = ptd_plasma.pos(1, ip + np_left);
-                    ptd_diag.pos(2, ip + old_size) = islice; // TODO add dz
+                    ptd_diag.pos(2, ip + old_size) = plasma_z;
                     const amrex::Real ux = ptd_plasma.rdata(PlasmaIdx::ux)[ip + np_left];
                     const amrex::Real uy = ptd_plasma.rdata(PlasmaIdx::uy)[ip + np_left];
                     const amrex::Real psi = ptd_plasma.rdata(PlasmaIdx::psi)[ip + np_left];
                     const amrex::Real psi_inv = 1 / psi;
                     const amrex::Real gamma = plasma_gamma(ux, uy, psi, psi_inv, 0);
                     const amrex::Real uz = plasma_uz(gamma, psi);
-                    // TODO add dt/dzeta to w
-                    ptd_diag.rdata(3)[ip + old_size] = ptd_plasma.rdata(PlasmaIdx::w)[ip + np_left];
+                    ptd_diag.rdata(3)[ip + old_size] =
+                        ptd_plasma.rdata(PlasmaIdx::w)[ip + np_left] * weight_factor;
                     ptd_diag.rdata(4)[ip + old_size] = ux;
                     ptd_diag.rdata(5)[ip + old_size] = uy;
                     ptd_diag.rdata(6)[ip + old_size] = uz;
@@ -1013,7 +1019,7 @@ Diagnostic::FillBoundaryDiagnostics (int islice, MultiPlasma& plasmas, MultiBeam
         }
 
         if (fd.m_base_diag_type == DiagnosticData::diag_type::particle_boundary) {
-            CopyParticlesBoundary(fd, islice - 1, plasmas, beams);
+            CopyParticlesBoundary(fd, islice - 1, plasmas, beams, field_geom);
             species_names_with_boundary_diag.insert(
                 fd.m_species_names.begin(), fd.m_species_names.end());
         }
