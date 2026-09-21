@@ -184,11 +184,14 @@ public:
      * \param[in] geom 3D Geometry of the simulation, to get the cell size
      * \param[in] physical_time Physical time of the current iteration.
      * \param[in] output_step current iteration to be written to file
+     * \param[in] output_time physical time of the current step
+     * \param[in] is_last_step if this is the last time step of the simulation
      */
     void
     WriteDiagnostics (const MultiLaser& multi_laser, const MultiBeam& beams,
                       const MultiPlasma& plasmas, const amrex::Geometry& geom,
-                      const amrex::Real physical_time, const int output_step);
+                      const amrex::Real physical_time, const int output_step,
+                      amrex::Real output_time, bool is_last_step);
 
 private:
 
@@ -243,6 +246,12 @@ private:
     HistogramDepositionCopy (DiagnosticData& fd, int islice,
                              MultiPlasma& plasmas, MultiBeam& beams,
                              const amrex::Vector<amrex::Geometry>& field_geom);
+
+    static std::set<std::string>
+    ParseCompsList (const amrex::Vector<std::string>& specified_comps,
+                    const std::set<std::string>& available_comps,
+                    std::map<std::string, bool>& is_global_comp_used,
+                    bool use_local_comps, const std::string& error_msg);
 
 public: // for CUDA device lambda
     void

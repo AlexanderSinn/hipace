@@ -606,7 +606,7 @@ Hipace::Evolve ()
             m_physical_time, m_dt, m_multi_beam, m_multi_plasma);
 
         m_diags.WriteDiagnostics(m_multi_laser, m_multi_beam, m_multi_plasma,
-            m_3D_geom[0], m_physical_time, step);
+            m_3D_geom[0], m_physical_time, step, m_physical_time, is_last_step);
 
         m_fields.InSituWriteToFile(step, m_physical_time, m_3D_geom[0], is_last_step);
         m_multi_beam.InSituWriteToFile(step, m_physical_time, m_3D_geom[0], is_last_step);

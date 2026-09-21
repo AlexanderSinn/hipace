@@ -107,10 +107,54 @@ Diagnostic::needsTempIndividual () const {
     return false;
 }
 
+std::set<std::string>
+Diagnostic::ParseCompsList (const amrex::Vector<std::string>& specified_comps,
+                            const std::set<std::string>& available_comps,
+                            std::map<std::string, bool>& is_global_comp_used,
+                            bool use_local_comps, const std::string& error_msg)
+{
+    // set to store all used components to avoid duplicates
+    std::set<std::string> comps_set{};
+
+    // iterate through the user-provided components from left to right
+    for (const std::string& comp_name : specified_comps) {
+        if (comp_name == "all" || comp_name == "All") {
+            is_global_comp_used[comp_name] = true;
+            // insert all available components
+            comps_set.insert(available_comps.begin(), available_comps.end());
+        } else if (comp_name == "none" || comp_name == "None") {
+            is_global_comp_used[comp_name] = true;
+            // remove all components
+            comps_set.clear();
+        } else if (available_comps.count(comp_name) > 0) {
+            is_global_comp_used[comp_name] = true;
+            // insert requested component
+            comps_set.insert(comp_name);
+        } else if (comp_name.find("remove_") == 0 &&
+                available_comps.count(
+                comp_name.substr(std::string("remove_").size(), comp_name.size())) > 0) {
+            is_global_comp_used[comp_name] = true;
+            // remove requested component
+            comps_set.erase(
+                comp_name.substr(std::string("remove_").size(), comp_name.size()));
+        } else if (use_local_comps) {
+            // if field_data was specified through <diag name>,
+            // assert that all components exist in the geometry
+            amrex::Abort("Unknown diagnostics '" + comp_name + "' " + error_msg);
+        } else {
+            // if field_data was specified through diagnostic,
+            // check later that all components are at least used by one of the diagnostics
+            is_global_comp_used.try_emplace(comp_name, false);
+        }
+    }
+
+    return comps_set;
+}
+
 void
 Diagnostic::Initialize (int nlev, bool use_laser,
-        const amrex::Vector<std::string>& beam_names,
-        const amrex::Vector<std::string>& plasma_names)
+                        const amrex::Vector<std::string>& beam_names,
+                        const amrex::Vector<std::string>& plasma_names)
 {
     amrex::ParmParse ppd("diagnostic");
     amrex::ParmParse pph("hipace");
@@ -230,11 +274,19 @@ Diagnostic::Initialize (int nlev, bool use_laser,
 
         // general parametes for all base geometries
 
+        // hipace.output_period
         if (queryWithParser(pph, "output_period", fd.m_output_period.m_func_str)) {
             amrex::Print() << "WARNING: 'hipace.output_period' is deprecated! "
                 "Use 'diagnostic.output_period' instead!\n";
         }
-        queryWithParserAlt(pp, "output_period", fd.m_output_period.m_func_str, ppd);
+        // diagnostic.output_period
+        queryWithParser(ppd, "output_period", fd.m_output_period.m_func_str);
+        if (fd.m_base_diag_type == DiagnosticData::diag_type::beam) {
+            // diagnostic.beam_output_period
+            queryWithParser(pph, "beam_output_period", fd.m_output_period.m_func_str);
+        }
+        // <diag_name>.output_period
+        queryWithParser(pp, "output_period", fd.m_output_period.m_func_str);
         fd.m_output_period.compile();
 
         // parameters for all particle based diagnostics
@@ -243,19 +295,23 @@ Diagnostic::Initialize (int nlev, bool use_laser,
             fd.m_base_diag_type == DiagnosticData::diag_type::plasma_slice ||
             fd.m_base_diag_type == DiagnosticData::diag_type::particle_boundary)
         {
-            for (auto& c : type_name_to_output_comps[base_type_name]) {
-                fd.m_species_names.push_back(c);
-            }
-
             queryWithParser(pp, "species", fd.m_species_names);
 
-            for (auto& c : fd.m_species_names) {
-                if (type_name_to_output_comps[base_type_name].count(c) == 0) {
-                    amrex::Abort("Unknown diagnostics species '" + c +
-                                "' in type '" + base_type_name + "'!\n" +
-                                all_comps_error_str.str());
-                }
+            if (fd.m_species_names.empty()) {
+                // by default output all components
+                fd.m_species_names.push_back("all");
             }
+
+            std::set<std::string> comps_set = ParseCompsList(fd.m_species_names,
+                type_name_to_output_comps[base_type_name],
+                is_global_comp_used, true,
+                "for species in type '" + base_type_name + "'!\n" +
+                all_comps_error_str.str()
+            );
+
+            fd.m_species_names.assign(comps_set.begin(), comps_set.end());
+            fd.m_comps_output = fd.m_species_names;
+            fd.m_nfields = fd.m_species_names.size();
         }
 
         // plasma slice parameters
@@ -287,6 +343,15 @@ Diagnostic::Initialize (int nlev, bool use_laser,
         if (fd.m_base_diag_type == DiagnosticData::diag_type::histogram)
         {
             getWithParser(pp, "hist_species_names", fd.m_hist_species_names);
+
+            std::set<std::string> comps_set = ParseCompsList(fd.m_hist_species_names,
+                type_name_to_output_comps[base_type_name],
+                is_global_comp_used, true,
+                "for hist_species_names in type '" + base_type_name + "'!\n" +
+                all_comps_error_str.str()
+            );
+            fd.m_hist_species_names.assign(comps_set.begin(), comps_set.end());
+
             getWithParser(pp, "hist_num_bins", fd.m_hist_num_bins);
             getWithParser(pp, "hist_bins_lo", fd.m_hist_bins_lo);
             getWithParser(pp, "hist_bins_hi", fd.m_hist_bins_hi);
@@ -384,48 +449,17 @@ Diagnostic::Initialize (int nlev, bool use_laser,
                 queryWithParser(ppd, "field_data", use_comps);
             }
 
-            // set to store all used components to avoid duplicates
-            std::set<std::string> comps_set{};
-
             if (use_comps.empty()) {
                 // by default output all components
                 use_comps.push_back("all");
             }
 
-            // iterate through the user-provided components from left to right
-            for (const std::string& comp_name : use_comps) {
-                if (comp_name == "all" || comp_name == "All") {
-                    is_global_comp_used[comp_name] = true;
-                    // insert all available components
-                    comps_set.insert(type_name_to_output_comps[base_type_name].begin(),
-                                    type_name_to_output_comps[base_type_name].end());
-                } else if (comp_name == "none" || comp_name == "None") {
-                    is_global_comp_used[comp_name] = true;
-                    // remove all components
-                    comps_set.clear();
-                } else if (type_name_to_output_comps[base_type_name].count(comp_name) > 0) {
-                    is_global_comp_used[comp_name] = true;
-                    // insert requested component
-                    comps_set.insert(comp_name);
-                } else if (comp_name.find("remove_") == 0 &&
-                        type_name_to_output_comps[base_type_name].count(
-                        comp_name.substr(std::string("remove_").size(), comp_name.size())) > 0) {
-                    is_global_comp_used[comp_name] = true;
-                    // remove requested component
-                    comps_set.erase(
-                        comp_name.substr(std::string("remove_").size(), comp_name.size()));
-                } else if (use_local_comps) {
-                    // if field_data was specified through <diag name>,
-                    // assert that all components exist in the geometry
-                    amrex::Abort("Unknown diagnostics field_data '" + comp_name +
-                                "' in type '" + base_type_name + "'!\n" +
-                                all_comps_error_str.str());
-                } else {
-                    // if field_data was specified through diagnostic,
-                    // check later that all components are at least used by one of the diagnostics
-                    is_global_comp_used.try_emplace(comp_name, false);
-                }
-            }
+            std::set<std::string> comps_set = ParseCompsList(use_comps,
+                type_name_to_output_comps[base_type_name],
+                is_global_comp_used, use_local_comps,
+                "for field_data in type '" + base_type_name + "'!\n" +
+                all_comps_error_str.str()
+            );
 
             fd.m_comps_output.assign(comps_set.begin(), comps_set.end());
             fd.m_nfields = fd.m_comps_output.size();
@@ -712,6 +746,8 @@ Diagnostic::InitDiagnosticsStep (amrex::Vector<amrex::Geometry>& field_geom,
                     amrex::The_Pinned_Arena()
                 );
 
+                fd.m_spceis_data[i].resize(0);
+
                 if (fd.m_base_diag_type == DiagnosticData::diag_type::beam) {
                     fd.m_spceis_data[i].reserve(np_total, amrex::GrowthStrategy::Exact);
                 }
@@ -807,7 +843,10 @@ Diagnostic::CopyBeams (DiagnosticData& fd, MultiBeam& beams)
 
         uint64_t np = beam.getNumParticles(WhichBeamSlice::This);
 
-        const int output_ratio = beam.m_output_ratio;
+        int output_ratio = fd.m_output_ratio;
+        if (fd.m_output_ratio == 1) {
+            output_ratio = beam.m_output_ratio;
+        }
 
         if (output_ratio > 1) {
             np = amrex::partitionParticles(beam.getBeamSlice(WhichBeamSlice::This),
@@ -820,7 +859,13 @@ Diagnostic::CopyBeams (DiagnosticData& fd, MultiBeam& beams)
         if (np != 0) {
             // copy data from GPU to IO buffer
             auto& slice = beam.getBeamSlice(WhichBeamSlice::This);
-            const auto old_size = fd.m_spceis_data.size();
+
+            AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
+                fd.m_spceis_data[i].NumRealComps() <= slice.NumRealComps() &&
+                fd.m_spceis_data[i].NumIntComps() <= slice.NumIntComps(),
+                "List of real names in particle diagnostic does not match the beam");
+
+            const auto old_size = fd.m_spceis_data[i].numParticles();
             const auto new_size = old_size + np;
             fd.m_spceis_data[i].resize(new_size, amrex::GrowthStrategy::Geometric);
 
@@ -844,11 +889,6 @@ Diagnostic::CopyBeams (DiagnosticData& fd, MultiBeam& beams)
                     slice.GetIntData(idx).begin() + np,
                     fd.m_spceis_data[i].GetIntData(idx).begin() + old_size);
             }
-
-            AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
-                fd.m_spceis_data[i].NumRealComps() == slice.NumRealComps() &&
-                fd.m_spceis_data[i].NumIntComps() == slice.NumIntComps(),
-                "List of real names in openPMD Writer class does not match the beam");
         }
     }
 }
@@ -870,7 +910,12 @@ Diagnostic::CopyPlasmas (DiagnosticData& fd, MultiPlasma& plasmas)
                 continue;
             }
 
-            const auto old_size = fd.m_spceis_data.size();
+            AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
+                fd.m_spceis_data[i].NumRealComps() == pti.GetParticleTile().NumRealComps() &&
+                fd.m_spceis_data[i].NumIntComps() == pti.GetParticleTile().NumIntComps(),
+                "List of real names in particle diagnostic does not match the beam");
+
+            const auto old_size = fd.m_spceis_data[i].numParticles();
             const auto new_size = old_size + np;
             // only one chunk of particles is expected per diagnostic
             fd.m_spceis_data[i].resize(new_size, amrex::GrowthStrategy::Exact);
@@ -924,7 +969,7 @@ Diagnostic::CopyParticlesBoundary (DiagnosticData& fd, int islice, MultiPlasma& 
                 continue;
             }
 
-            const auto old_size = fd.m_spceis_data.size();
+            const auto old_size = fd.m_spceis_data[i].numParticles();
             const auto new_size = old_size + np;
             fd.m_spceis_data[i].resize(new_size, amrex::GrowthStrategy::Geometric);
 
@@ -1057,11 +1102,14 @@ Diagnostic::FillBoundaryDiagnostics (int islice, MultiPlasma& plasmas, MultiBeam
 void
 Diagnostic::WriteDiagnostics (
     const MultiLaser& multi_laser, const MultiBeam& beams, const MultiPlasma& plasmas,
-    const amrex::Geometry& geom, const amrex::Real physical_time, const int output_step
+    const amrex::Geometry& geom, const amrex::Real physical_time, const int output_step,
+    amrex::Real output_time, bool is_last_step
 )
 {
 #ifdef HIPACE_USE_OPENPMD
-    m_openpmd_writer.WriteDiagnostics(m_diag_data, multi_laser, beams, plasmas, geom,
-        physical_time, output_step);
+    if (hasAnyOutput(output_step, output_time, is_last_step)) {
+        m_openpmd_writer.WriteDiagnostics(m_diag_data, multi_laser, beams, plasmas, geom,
+            physical_time, output_step);
+    }
 #endif
 }

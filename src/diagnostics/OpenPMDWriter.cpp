@@ -264,7 +264,7 @@ OpenPMDWriter::WriteParticleData (DiagnosticData& fd, openPMD::Iteration& iterat
     for (amrex::Long i = 0; i < fd.m_species_names.size(); ++i) {
         const std::string& species_name = fd.m_species_names[i];
 
-        openPMD::ParticleSpecies particle_species = iteration.particles[species_name];
+        openPMD::ParticleSpecies particle_species = iteration.particles[fd.m_comps_output[i]];
         std::size_t np_total = static_cast<std::size_t>(fd.m_spceis_data[i].numParticles());
 
         SetupAttributes(species_name, particle_species, np_total, beams, plasmas, geom);

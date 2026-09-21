@@ -24,7 +24,7 @@ namespace openPMD {
     class Record;
 }
 
-class DiagnosticData;
+struct DiagnosticData;
 class Fields;
 class MultiBeam;
 class MultiLaser;
