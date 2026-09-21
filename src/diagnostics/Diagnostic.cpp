@@ -258,7 +258,10 @@ Diagnostic::Initialize (int nlev, bool use_laser,
         }
 
         DeprecatedInput(fd.m_diag_name, "level", "type");
-        DeprecatedInput(fd.m_diag_name, "base_geometry", "type");
+        if (queryWithParserAlt(pp, "base_geometry", base_type_name, ppd)) {
+            amrex::Print() << "WARNING: '<diag name> or diagnostic.base_geometry' is deprecated! "
+                "Use '<diag name> or diagnostic.type' instead!\n";
+        }
         queryWithParserAlt(pp, "type", base_type_name, ppd);
 
         if (type_name_to_diag_type.count(base_type_name) > 0) {
@@ -283,7 +286,7 @@ Diagnostic::Initialize (int nlev, bool use_laser,
         queryWithParser(ppd, "output_period", fd.m_output_period.m_func_str);
         if (fd.m_base_diag_type == DiagnosticData::diag_type::beam) {
             // diagnostic.beam_output_period
-            queryWithParser(pph, "beam_output_period", fd.m_output_period.m_func_str);
+            queryWithParser(ppd, "beam_output_period", fd.m_output_period.m_func_str);
         }
         // <diag_name>.output_period
         queryWithParser(pp, "output_period", fd.m_output_period.m_func_str);
@@ -312,6 +315,13 @@ Diagnostic::Initialize (int nlev, bool use_laser,
             fd.m_species_names.assign(comps_set.begin(), comps_set.end());
             fd.m_comps_output = fd.m_species_names;
             fd.m_nfields = fd.m_species_names.size();
+        }
+
+        // beam parameters
+
+        if (fd.m_base_diag_type == DiagnosticData::diag_type::beam) {
+            queryWithParser(pp, "output_ratio", fd.m_output_ratio);
+            AMREX_ALWAYS_ASSERT_WITH_MESSAGE(fd.m_output_ratio >= 1, "output_ratio must be >= 1");
         }
 
         // plasma slice parameters
@@ -418,8 +428,13 @@ Diagnostic::Initialize (int nlev, bool use_laser,
             fd.m_base_diag_type == DiagnosticData::diag_type::laser)
         {
             std::string str_type;
-            DeprecatedInput(fd.m_diag_name, "diag_type", "dimensions");
-            getWithParserAlt(pp, "dimensions", str_type, ppd);
+            if (queryWithParserAlt(pp, "diag_type", str_type, ppd)) {
+                amrex::Print() << "WARNING: '<diag name> or diagnostic.diag_type' is deprecated! "
+                    "Use '<diag name> or diagnostic.dimensions' instead!\n";
+
+            } else {
+                getWithParserAlt(pp, "dimensions", str_type, ppd);
+            }
             if (str_type == "xyz"){
                 fd.m_remove_axis = {0, 0, 0};
                 fd.m_axis_labels = {"x", "y", "z"};
@@ -720,8 +735,12 @@ Diagnostic::InitDiagnosticsStep (amrex::Vector<amrex::Geometry>& field_geom,
                 } else {
                     auto& beam = beams.getBeam(species_name);
                     np_total = beam.getTotalNumParticles();
-                    if (fd.m_output_ratio > 1) {
-                        np_total = (np_total + fd.m_output_ratio - 1) / fd.m_output_ratio;
+                    int output_ratio = fd.m_output_ratio;
+                    if (output_ratio == 1) {
+                        output_ratio = beam.m_output_ratio;
+                    }
+                    if (output_ratio > 1) {
+                        np_total = (np_total + output_ratio - 1) / output_ratio;
                     }
 
                     fd.m_idcpu_name[i] = "id";

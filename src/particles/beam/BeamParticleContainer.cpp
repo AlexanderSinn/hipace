@@ -76,7 +76,10 @@ BeamParticleContainer::ReadParameters ()
     amrex::Array<int, 2> idx_array
         {Hipace::m_depos_order_xy % 2, Hipace::m_depos_order_xy % 2};
     queryWithParserAlt(pp, "reorder_idx_type", idx_array, pp_alt);
-    queryWithParserAlt(pp, "output_ratio", m_output_ratio, pp_alt);
+    if (queryWithParserAlt(pp, "output_ratio", m_output_ratio, pp_alt)) {
+        amrex::Print() << "WARNING: '<beam name> or beams.output_ratio' is deprecated! "
+                "Use '<diag name> or beam_diag.output_ratio' instead!\n";
+    }
     AMREX_ALWAYS_ASSERT_WITH_MESSAGE(m_output_ratio >= 1, "output_ratio must be >= 1");
     m_reorder_idx_type = amrex::IntVect(idx_array[0], idx_array[1], 0);
     amrex::Array<std::string, 3> field_str = {"0", "0", "0"};
