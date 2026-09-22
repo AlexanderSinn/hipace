@@ -65,11 +65,12 @@ private:
      * \param[in] beams multi beam to get charge and mass
      * \param[in] plasmas multi plamsa to get charge and mass
      * \param[in] geom 3D Geometry of the simulation, to get the cell size
+     * \param[in] is_plama_slice don't set z component of metadata
      */
     void SetupAttributes (const std::string& species_name,
-                          openPMD::ParticleSpecies particle_species, std::size_t np_total,
+                          openPMD::ParticleSpecies& particle_species, std::size_t np_total,
                           const MultiBeam& beams, const MultiPlasma& plasmas,
-                          const amrex::Geometry& geom);
+                          const amrex::Geometry& geom, bool only_xy);
 
     /** \brief setup the openPMD parameters do dump particle data
      *

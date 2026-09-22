@@ -23,7 +23,7 @@ namespace utils {
     {
         std::string record_name = fullName;
         std::string component_name = openPMD::RecordComponent::SCALAR;
-        std::size_t startComp = fullName.find_last_of("_");
+        std::size_t startComp = fullName.find_last_of("/");
 
         if( startComp != std::string::npos ) {  // non-scalar
             record_name = fullName.substr(0, startComp);
@@ -267,7 +267,8 @@ OpenPMDWriter::WriteParticleData (DiagnosticData& fd, openPMD::Iteration& iterat
         openPMD::ParticleSpecies particle_species = iteration.particles[fd.m_comps_output[i]];
         std::size_t np_total = static_cast<std::size_t>(fd.m_spceis_data[i].numParticles());
 
-        SetupAttributes(species_name, particle_species, np_total, beams, plasmas, geom);
+        SetupAttributes(species_name, particle_species, np_total, beams, plasmas, geom,
+            fd.m_base_diag_type == DiagnosticData::diag_type::plasma_slice);
 
         std::set<std::string> addedRecords;
 
@@ -328,8 +329,9 @@ OpenPMDWriter::WriteParticleData (DiagnosticData& fd, openPMD::Iteration& iterat
 
 void
 OpenPMDWriter::SetupAttributes (
-    const std::string& species_name, openPMD::ParticleSpecies particle_species, std::size_t np_total,
-    const MultiBeam& beams, const MultiPlasma& plasmas, const amrex::Geometry& geom)
+    const std::string& species_name, openPMD::ParticleSpecies& particle_species,
+    std::size_t np_total, const MultiBeam& beams, const MultiPlasma& plasmas,
+    const amrex::Geometry& geom, bool only_xy)
 {
     amrex::Real charge = 0;
     amrex::Real mass = 0;
@@ -346,7 +348,12 @@ OpenPMDWriter::SetupAttributes (
     const PhysConst phys_const_SI = make_constants_SI();
     auto const realType = openPMD::Dataset(openPMD::determineDatatype<amrex::Real>(), {np_total});
 
-    std::vector< std::string > const positionComponents{"x", "y", "z"};
+    std::vector<std::string> positionComponents;
+    if (only_xy) {
+        positionComponents = {"x", "y"};
+    } else {
+        positionComponents = {"x", "y", "z"};
+    }
     for( auto const& comp : positionComponents ) {
         particle_species["positionOffset"][comp].resetDataset( realType );
         particle_species["positionOffset"][comp].makeConstant( 0. );

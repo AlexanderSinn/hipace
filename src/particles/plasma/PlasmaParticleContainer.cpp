@@ -188,13 +188,33 @@ PlasmaParticleContainer::InitData (const amrex::Vector<amrex::Geometry>& geom3d)
 
         SetArena(amrex::The_Arena());
 
-        for (int j = 0; j < PlasmaIdx::real_nattribs; ++j) {
-            AddRealComp();
+        AddRealComp("position/x");
+        AddRealComp("position/y");
+        AddRealComp("weighting");
+        AddRealComp("momentum/x");
+        AddRealComp("momentum/y");
+        AddRealComp("psi");
+        AddRealComp("x_prev");
+        AddRealComp("y_prev");
+        AddRealComp("ux_half_step");
+        AddRealComp("uy_half_step");
+        AddRealComp("psi_half_step");
+#ifdef HIPACE_USE_AB5_PUSH
+        for (int j = 0; j < 5; ++j) {
+            AddRealComp("AB5/Fx" + std::to_string(i+1));
+            AddRealComp("AB5/Fy" + std::to_string(i+1));
+            AddRealComp("AB5/Fux" + std::to_string(i+1));
+            AddRealComp("AB5/Fuy" + std::to_string(i+1));
+            AddRealComp("AB5/Fpsi" + std::to_string(i+1));
         }
+#endif
+        AddIntComp("ion_lev");
 
-        for (int j = 0; j < PlasmaIdx::int_nattribs; ++j) {
-            AddIntComp();
-        }
+        AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
+            NumRealComps() == PlasmaIdx::real_nattribs &&
+            NumIntComps() == PlasmaIdx::int_nattribs,
+            "Incorrect number of real or int components of plasma particle container"
+        );
 
         reserveData();
         resizeData();
