@@ -124,7 +124,7 @@ public:
     [[nodiscard]] bool
     needsTempIndividual () const;
 
-    [[nodiscard]] const std::string&
+    [[nodiscard]] const std::string_view
     getFilePrefix () const {
 #ifdef HIPACE_USE_OPENPMD
         return m_openpmd_writer.m_file_prefix;

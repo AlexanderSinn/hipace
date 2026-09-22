@@ -201,11 +201,11 @@ PlasmaParticleContainer::InitData (const amrex::Vector<amrex::Geometry>& geom3d)
         AddRealComp("psi_half_step");
 #ifdef HIPACE_USE_AB5_PUSH
         for (int j = 0; j < 5; ++j) {
-            AddRealComp("AB5/Fx" + std::to_string(i+1));
-            AddRealComp("AB5/Fy" + std::to_string(i+1));
-            AddRealComp("AB5/Fux" + std::to_string(i+1));
-            AddRealComp("AB5/Fuy" + std::to_string(i+1));
-            AddRealComp("AB5/Fpsi" + std::to_string(i+1));
+            AddRealComp("AB5/Fx" + std::to_string(j+1));
+            AddRealComp("AB5/Fy" + std::to_string(j+1));
+            AddRealComp("AB5/Fux" + std::to_string(j+1));
+            AddRealComp("AB5/Fuy" + std::to_string(j+1));
+            AddRealComp("AB5/Fpsi" + std::to_string(j+1));
         }
 #endif
         AddIntComp("ion_lev");

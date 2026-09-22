@@ -1181,5 +1181,8 @@ Diagnostic::WriteDiagnostics (
         m_openpmd_writer.WriteDiagnostics(m_diag_data, multi_laser, beams, plasmas, geom,
             physical_time, output_step);
     }
+#else
+    amrex::ignore_unused(multi_laser, beams, plasmas, geom, physical_time, output_step,
+        output_time, is_last_step);
 #endif
 }

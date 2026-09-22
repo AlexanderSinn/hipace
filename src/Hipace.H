@@ -180,7 +180,7 @@ public:
     static std::string Version ();
 
     /** \brief get diagnostics file prefix */
-    const std::string& getDiagFilePrefix () const { return m_diags.getFilePrefix(); }
+    const std::string_view getDiagFilePrefix () const { return m_diags.getFilePrefix(); }
 
     /** 3D Geometry, vector over MR levels */
     amrex::Vector<amrex::Geometry> m_3D_geom;
