@@ -117,9 +117,6 @@ public:
 
     /** Prefix/path for the output files */
     std::string m_file_prefix;
-
-    /** Temporary workaround to display normalized momentum correctly */
-    bool m_openpmd_viewer_workaround = true;
 };
 
 #endif // HIPACE_USE_OPENPMD

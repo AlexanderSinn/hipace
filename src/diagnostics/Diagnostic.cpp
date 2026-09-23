@@ -262,7 +262,7 @@ Diagnostic::Initialize (int nlev, bool use_laser,
             amrex::Print() << "WARNING: '<diag name> or diagnostic.base_geometry' is deprecated! "
                 "Use '<diag name> or diagnostic.type' instead!\n";
         }
-        queryWithParserAlt(pp, "type", base_type_name, ppd);
+        queryWithParser(pp, "type", base_type_name);
 
         if (type_name_to_diag_type.count(base_type_name) > 0) {
             fd.m_base_diag_type = type_name_to_diag_type.at(base_type_name);

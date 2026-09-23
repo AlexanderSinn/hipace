@@ -107,10 +107,6 @@ OpenPMDWriter::ReadParameters ()
         amrex::Print() <<
             "It is recommended to use hipace.output_folder instead of hipace.file_prefix\n";
     }
-
-    // temporary workaround until openPMD-viewer gets fixed
-    amrex::ParmParse ppd("diagnostic");
-    queryWithParser(ppd, "openpmd_viewer_u_workaround", m_openpmd_viewer_workaround);
 }
 
 OpenPMDWriter::OpenPMDWriter () {}
@@ -390,13 +386,6 @@ OpenPMDWriter::SetupAttributes (
         hipace_to_SI_momentum = mass * phys_const_SI.m_e * phys_const_SI.c;
         hipace_to_SI_charge = phys_const_SI.q_e;
         hipace_to_SI_mass = phys_const_SI.m_e;
-    }
-
-    // temporary workaround until openPMD-viewer does not autonormalize momentum
-    if(m_openpmd_viewer_workaround) {
-        if(Hipace::m_normalized_units) {
-            hipace_to_unitSI_momentum = mass * phys_const_SI.c;
-        }
     }
 
     // write SI conversion

@@ -247,6 +247,15 @@ private:
                              MultiPlasma& plasmas, MultiBeam& beams,
                              const amrex::Vector<amrex::Geometry>& field_geom);
 
+    /** \brief Given a list of input componetes, handle "all" and "remove_..." and make sure
+     * all are available
+     *
+     * \param[in] specified_comps components from user input
+     * \param[in] available_comps all available components
+     * \param[in,out] is_global_comp_used used compes from diagnostic. input parameter
+     * \param[in] use_local_comps if the componets come from diagnostic. or <diag name>.
+     * \param[in] error_msg error to print if component is not available
+     */
     static std::set<std::string>
     ParseCompsList (const amrex::Vector<std::string>& specified_comps,
                     const std::set<std::string>& available_comps,
@@ -254,12 +263,31 @@ private:
                     bool use_local_comps, const std::string& error_msg);
 
 public: // for CUDA device lambda
+
+    /** \brief Collect beam particles and copy them to the CPU memory
+     *
+     * \param[in] fd field diagnostic
+     * \param[in] beams MultiBeam object
+     */
     void
     CopyBeams (DiagnosticData& fd, MultiBeam& beams);
 
+    /** \brief Collect plasma particles and copy them to the CPU memory
+     *
+     * \param[in] fd field diagnostic
+     * \param[in] plasmas MultiPlasma object
+     */
     void
     CopyPlasmas (DiagnosticData& fd, MultiPlasma& plasmas);
 
+    /** \brief Collect beam and plasma particles at the boundary and copy them to the CPU memory
+     *
+     * \param[in] fd field diagnostic
+     * \param[in] islice current slice
+     * \param[in] plasmas MultiPlasma object
+     * \param[in] beams MultiBeam object
+     * \param[in] gm geometry for all field MR levels
+     */
     void
     CopyParticlesBoundary (DiagnosticData& fd, int islice, MultiPlasma& plasmas, MultiBeam& beams,
                            const amrex::Vector<amrex::Geometry>& gm);
