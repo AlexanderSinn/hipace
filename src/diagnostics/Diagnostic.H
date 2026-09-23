@@ -253,7 +253,7 @@ private:
      * \param[in] specified_comps components from user input
      * \param[in] available_comps all available components
      * \param[in,out] is_global_comp_used used compes from diagnostic. input parameter
-     * \param[in] use_local_comps if the componets come from diagnostic. or <diag name>.
+     * \param[in] use_local_comps if the componets come from diagnostic. or diag name.
      * \param[in] error_msg error to print if component is not available
      */
     static std::set<std::string>
