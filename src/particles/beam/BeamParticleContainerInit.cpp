@@ -59,11 +59,6 @@ namespace
         ptd.rdata(BeamIdx::ux)[ip] = uxp;
         ptd.rdata(BeamIdx::uy)[ip] = uyp;
         ptd.rdata(BeamIdx::uz)[ip] = uz;
-        if (do_spin) {
-            ptd.rdata(BeamIdx::sx)[ip] = sx;
-            ptd.rdata(BeamIdx::sy)[ip] = sy;
-            ptd.rdata(BeamIdx::sz)[ip] = sz;
-        }
         ptd.rdata(BeamIdx::w  )[ip] = std::abs(weight);
 
         ptd.idcpu(ip) = pid + ip;
@@ -106,9 +101,6 @@ namespace
         ptd.rdata(BeamIdx::uy)[ip] = uyp;
         ptd.rdata(BeamIdx::uz)[ip] = uz;
         ptd.rdata(BeamIdx::w )[ip] = is_valid ? std::abs(weight) : amrex::Real{0};
-
-        ptd.idata(BeamIdx::nsubcycles)[ip] = 0;
-        ptd.idata(BeamIdx::mr_level)[ip] = 0;
 
         ptd.idcpu(ip) = pid + ip;
         if (is_valid) {
@@ -284,7 +276,7 @@ InitBeamFixedPPCSlice (const int islice, const int which_beam_slice)
     int num_to_add = amrex::Scan::ExclusiveSum(counts.size(), counts.data(), offsets.data());
 
     // Second: allocate the memory for these particles
-    resize(which_beam_slice, num_to_add, 0);
+    resize(which_beam_slice, num_to_add);
     if (num_to_add == 0) return;
     auto& particle_tile = getBeamSlice(which_beam_slice);
 
@@ -390,9 +382,9 @@ InitBeamFixedWeightSlice (int slice, int which_slice)
 
     const int num_to_add = m_init_sorter.m_box_counts_cpu[slice];
     if (m_do_symmetrize) {
-        resize(which_slice, 4*num_to_add, 0);
+        resize(which_slice, 4*num_to_add);
     } else {
-        resize(which_slice, num_to_add, 0);
+        resize(which_slice, num_to_add);
     }
 
     if (num_to_add == 0) return;
@@ -609,9 +601,9 @@ InitBeamFixedWeightPDFSlice (int slice, int which_slice)
         num_to_add_full += m_num_particles_slice[slice*m_pdf_ref_ratio+r];
     }
     if (m_do_symmetrize) {
-        resize(which_slice, 4*num_to_add_full, 0);
+        resize(which_slice, 4*num_to_add_full);
     } else {
-        resize(which_slice, num_to_add_full, 0);
+        resize(which_slice, num_to_add_full);
     }
 
     const uint64_t pid = m_id64;
@@ -724,9 +716,9 @@ InitBeamFixedWeightTwissSlice (int slice, int which_slice)
         num_to_add_full += m_num_particles_slice[slice*m_pdf_ref_ratio+r];
     }
     if (m_do_symmetrize) {
-        resize(which_slice, 4*num_to_add_full, 0);
+        resize(which_slice, 4*num_to_add_full);
     } else {
-        resize(which_slice, num_to_add_full, 0);
+        resize(which_slice, num_to_add_full);
     }
 
     const uint64_t pid = m_id64;

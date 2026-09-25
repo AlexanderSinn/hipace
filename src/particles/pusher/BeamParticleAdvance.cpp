@@ -17,124 +17,6 @@
 #include "utils/OMPUtil.H"
 
 
-template <int depos_order>
-AMREX_GPU_DEVICE AMREX_FORCE_INLINE
-void InterpolateEzInZ (
-    amrex::Real& Ezp,
-    const amrex::Real xp, const amrex::Real yp, const amrex::Real zp,
-    const amrex::Real x_pos_offset, const amrex::Real y_pos_offset, const amrex::Real min_z,
-    const amrex::Real dx_inv, const amrex::Real dy_inv, const amrex::Real dz_inv,
-    const int ez_comp_prev, const int ez_comp_next, const Array3<const amrex::Real> slice_arr
-)
-{
-    using namespace amrex::literals;
-
-    // x,y,z direction
-    const amrex::Real xmid = (xp-x_pos_offset)*dx_inv;
-    const amrex::Real ymid = (yp-y_pos_offset)*dy_inv;
-    const amrex::Real zmid = (zp-min_z)*dz_inv-0.5_rt;
-
-    const auto [shape_p, pcell] = shape_factor<2>(zmid, 2);
-    const auto [shape_n, ncell] = shape_factor<2>(zmid, 0);
-
-    Ezp *= (1._rt - shape_p - shape_n);
-
-    // Gather Ez field on particle from grid
-    for (int iy=0; iy<=depos_order; iy++){
-        for (int ix=0; ix<=depos_order; ix++){
-            // Compute shape factors
-            auto [shape_y, jcell] = shape_factor<depos_order>(ymid, iy);
-            auto [shape_x, icell] = shape_factor<depos_order>(xmid, ix);
-
-            Ezp += shape_p * shape_y * shape_x * slice_arr(icell, jcell, ez_comp_prev);
-            Ezp += shape_n * shape_y * shape_x * slice_arr(icell, jcell, ez_comp_next);
-        }
-    }
-}
-
-
-AMREX_GPU_DEVICE AMREX_FORCE_INLINE
-void PushSpin (
-    amrex::RealVect& spin,
-    const amrex::Real ExmByp, const amrex::Real EypBxp, const amrex::Real Ezp,
-    const amrex::Real Bxp, const amrex::Real Byp, const amrex::Real Bzp,
-    const amrex::Real ux_intermediate, const amrex::Real uy_intermediate,
-    const amrex::Real uz_intermediate, const amrex::Real gamma_intermediate_inv,
-    const amrex::Real charge_mass_ratio, const amrex::Real dt,
-    const amrex::Real spin_anom
-)
-{
-    using namespace amrex::literals;
-
-    const amrex::RealVect E {ExmByp + Byp, EypBxp - Bxp, Ezp};
-    const amrex::RealVect B {Bxp, Byp, Bzp};
-    const amrex::RealVect u {ux_intermediate, uy_intermediate, uz_intermediate};
-    const amrex::RealVect beta = u*gamma_intermediate_inv;
-    const amrex::Real gamma_inv_p1 =
-        gamma_intermediate_inv / (1._rt + gamma_intermediate_inv);
-
-    const amrex::RealVect omega = std::abs(charge_mass_ratio) * (
-        B * gamma_intermediate_inv - beta.crossProduct(E) * gamma_inv_p1
-        + spin_anom * (
-            B - gamma_inv_p1 * u * beta.dotProduct(B) - beta.crossProduct(E)
-        )
-    );
-
-    const amrex::RealVect h = omega * dt * 0.5_rt;
-    const amrex::RealVect s_prime = spin + h.crossProduct(spin);
-    const amrex::Real o = 1._rt / (1._rt + h.dotProduct(h));
-    spin = o * (s_prime + (h.dotProduct(s_prime) * h + h.crossProduct(s_prime)));
-}
-
-
-AMREX_GPU_DEVICE AMREX_FORCE_INLINE
-void ApplyRadiationReaction (
-    amrex::Real& ux_next, amrex::Real& uy_next, amrex::Real& uz_next,
-    const amrex::Real ExmByp, const amrex::Real EypBxp, const amrex::Real Ezp,
-    const amrex::Real Bxp, const amrex::Real Byp, const amrex::Real Bzp,
-    const amrex::Real ux_intermediate, const amrex::Real uy_intermediate,
-    const amrex::Real uz_intermediate, const amrex::Real gamma_intermediate_inv,
-    const amrex::Real dt, const amrex::Real rr_factor
-)
-{
-    using namespace amrex::literals;
-
-    const amrex::Real Exp = ExmByp + Byp;
-    const amrex::Real Eyp = EypBxp - Bxp;
-
-    const amrex::Real gamma_intermediate = std::sqrt( 1._rt
-        + ux_intermediate*ux_intermediate
-        + uy_intermediate*uy_intermediate
-        + uz_intermediate*uz_intermediate);
-
-    // Estimation of normalized velocity beta (v/c) at intermediate time
-    const amrex::Real bx_n = ux_intermediate * gamma_intermediate_inv;
-    const amrex::Real by_n = uy_intermediate * gamma_intermediate_inv;
-    const amrex::Real bz_n = uz_intermediate * gamma_intermediate_inv;
-
-    // Lorentz force over charge
-    const amrex::Real flx_q = (Exp + by_n*Bzp - bz_n*Byp);
-    const amrex::Real fly_q = (Eyp + bz_n*Bxp - bx_n*Bzp);
-    const amrex::Real flz_q = (Ezp + bx_n*Byp - by_n*Bxp);
-    const amrex::Real fl_q2 = flx_q*flx_q + fly_q*fly_q + flz_q*flz_q;
-
-    // Calculation of auxiliary quantities
-    const amrex::Real bdotE = (bx_n*Exp + by_n*Eyp + bz_n*Ezp);
-    const amrex::Real bdotE2 = bdotE*bdotE;
-    const amrex::Real coeff = gamma_intermediate*gamma_intermediate*(fl_q2-bdotE2);
-
-    // Compute the components of the RR force
-    const amrex::Real frx = fly_q*Bzp - flz_q*Byp + bdotE*Exp - coeff*bx_n;
-    const amrex::Real fry = flz_q*Bxp - flx_q*Bzp + bdotE*Eyp - coeff*by_n;
-    const amrex::Real frz = flx_q*Byp - fly_q*Bxp + bdotE*Ezp - coeff*bz_n;
-
-    // Update momentum using the RR force
-    ux_next += dt * rr_factor * frx;
-    uy_next += dt * rr_factor * fry;
-    uz_next += dt * rr_factor * frz;
-}
-
-
 struct MRLevelData {
     // Array to access fields
     Array3<const amrex::Real> slice_arr;
@@ -157,34 +39,22 @@ AdvanceBeamParticlesSlice (
 
     const PhysConst phys_const = get_phys_const();
 
-    const bool do_z_push = beam.m_do_z_push;
-    const int n_subcycles = beam.m_n_subcycles;
-    const bool radiation_reaction = beam.m_do_radiation_reaction;
     const amrex::Real time = Hipace::GetInstance().m_physical_time;
-    const amrex::Real dt = Hipace::GetInstance().m_dt / n_subcycles;
-    const bool spin_tracking = beam.m_do_spin_tracking;
-    const amrex::Real spin_anom = beam.m_spin_anom;
+    const amrex::Real dt = Hipace::GetInstance().m_dt;
 
-    const int psi_comp = Comps[WhichSlice::This]["Psi"];
-    const int ez_comp = Comps[WhichSlice::This]["Ez"];
-    const int bx_comp = Comps[WhichSlice::This]["Bx"];
-    const int by_comp = Comps[WhichSlice::This]["By"];
-    const int bz_comp = Comps[WhichSlice::This]["Bz"];
-
-    const bool do_ez_inzerp = (Hipace::m_depos_order_z == 2);
-    const int ez_comp_prev = do_ez_inzerp ? Comps[WhichSlice::Previous]["Ez"] : -1;
-    const int ez_comp_next = do_ez_inzerp ? Comps[WhichSlice::Next]["Ez"] : -1;
+    const int ExmBy_this = Comps[WhichSlice::This]["ExmBy"];
+    const int EypBx_this = Comps[WhichSlice::This]["EypBx"];
+    const int Ez_this = Comps[WhichSlice::This]["Ez"];
+    const int Bz_this = Comps[WhichSlice::This]["Bz"];
+    const int ExpBy_this = Comps[WhichSlice::This]["ExpBy"];
+    const int EymBx_this = Comps[WhichSlice::This]["EymBx"];
 
     const int lev0_idx = 0;
-    const int lev1_idx = std::min(1, current_N_level-1);
-    const int lev2_idx = std::min(2, current_N_level-1);
 
     // Extract field array from FabArrays in MultiFabs.
     // (because there is currently no transverse parallelization, the index
     // we want in the slice multifab is always 0. Fix later.
     const amrex::FArrayBox& slice_fab_lev0 = fields.getSlices(lev0_idx)[0];
-    const amrex::FArrayBox& slice_fab_lev1 = fields.getSlices(lev1_idx)[0];
-    const amrex::FArrayBox& slice_fab_lev2 = fields.getSlices(lev2_idx)[0];
 
     const MRLevelData level0data {
         slice_fab_lev0.const_array(),
@@ -192,26 +62,6 @@ AdvanceBeamParticlesSlice (
         GetPosOffset(0, gm[lev0_idx], slice_fab_lev0.box()),
         GetPosOffset(1, gm[lev0_idx], slice_fab_lev0.box())
     };
-
-    const MRLevelData level1data {
-        slice_fab_lev1.const_array(),
-        gm[lev1_idx].InvCellSize(0), gm[lev1_idx].InvCellSize(1),
-        GetPosOffset(0, gm[lev1_idx], slice_fab_lev1.box()),
-        GetPosOffset(1, gm[lev1_idx], slice_fab_lev1.box())
-    };
-
-    const MRLevelData level2data {
-        slice_fab_lev2.const_array(),
-        gm[lev2_idx].InvCellSize(0), gm[lev2_idx].InvCellSize(1),
-        GetPosOffset(0, gm[lev2_idx], slice_fab_lev2.box()),
-        GetPosOffset(1, gm[lev2_idx], slice_fab_lev2.box())
-    };
-
-    // z is the same for all levels
-    amrex::Real const dz_inv = gm[lev0_idx].InvCellSize(2);
-
-    const CheckDomainBounds lev1_bounds {gm[lev1_idx]};
-    const CheckDomainBounds lev2_bounds {gm[lev2_idx]};
 
     // Extract particle properties
     const auto ptd = beam.getBeamSlice(WhichBeamSlice::This).getParticleTileData();
@@ -222,19 +72,6 @@ AdvanceBeamParticlesSlice (
     const amrex::Real inv_clight = 1.0_rt/phys_const.c;
     const amrex::Real charge_mass_ratio = beam.m_charge / beam.m_mass;
     const amrex::Real min_z = gm[0].ProbLo(2) + (slice-gm[0].Domain().smallEnd(2))*gm[0].CellSize(2);
-    const bool use_external_fields = beam.m_use_external_fields;
-    const auto external_fields = beam.m_external_fields;
-
-    // Radiation reaction constant
-    amrex::Real rr_factor = (2.0_rt/3.0_rt) * PhysConstSI::r_e
-        * charge_mass_ratio * charge_mass_ratio / PhysConstSI::c;
-    if (Hipace::m_normalized_units && radiation_reaction) {
-        AMREX_ALWAYS_ASSERT_WITH_MESSAGE(Hipace::m_background_density_SI != 0,
-            "For radiation reactions with normalized units, a background plasma density != 0 must "
-            "be specified via 'hipace.background_density_SI'");
-        rr_factor *= std::sqrt(static_cast<double>(Hipace::m_background_density_SI)
-                / (PhysConstSI::ep0 * PhysConstSI::m_e)) * PhysConstSI::q_e;
-    }
 
     // don't include slipped particles in count as they were already pushed
     Hipace::m_num_beam_particles_pushed += double(beam.getNumParticles(WhichBeamSlice::This));
@@ -242,163 +79,90 @@ AdvanceBeamParticlesSlice (
     // Use OMP ParallelFor to use multiple threads when running on CPU
     omp::ParallelFor(
         amrex::TypeList<
-            amrex::CompileTimeOptions<0, 1, 2, 3>,
-            amrex::CompileTimeOptions<false, true>,
-            amrex::CompileTimeOptions<false, true>
+            amrex::CompileTimeOptions<0, 1, 2, 3>
         >{}, {
-            Hipace::m_depos_order_xy,
-            use_external_fields,
-            do_ez_inzerp
+            Hipace::m_depos_order_xy
         },
-        beam.getNumParticlesIncludingSlipped(WhichBeamSlice::This),
-        [=] AMREX_GPU_DEVICE (int ip, auto depos_order, auto c_use_external_fields,
-                              auto c_do_ez_inzerp) {
+        beam.getNumParticles(WhichBeamSlice::This),
+        [=] AMREX_GPU_DEVICE (int ip, auto depos_order) {
 
             if (!ptd.id(ip).is_valid()) return;
 
-            // Load particle data
             amrex::Real xp = ptd.pos(0, ip);
             amrex::Real yp = ptd.pos(1, ip);
             amrex::Real zp = ptd.pos(2, ip);
+
             amrex::Real ux = ptd.rdata(BeamIdx::ux)[ip];
             amrex::Real uy = ptd.rdata(BeamIdx::uy)[ip];
             amrex::Real uz = ptd.rdata(BeamIdx::uz)[ip];
 
-            int i = ptd.idata(BeamIdx::nsubcycles)[ip];
+            amrex::Real gammap_inv = amrex::Math::rsqrt(1.0_rt + ux*ux + uy*uy + uz*uz);
 
-            amrex::RealVect spin {0._rt, 0._rt, 0._rt};
-            if (spin_tracking) {
-                spin[0] = ptd.rdata(BeamIdx::sx)[ip];
-                spin[1] = ptd.rdata(BeamIdx::sy)[ip];
-                spin[2] = ptd.rdata(BeamIdx::sz)[ip];
-            }
+            amrex::Real time = ptd.rdata(BeamIdx::t)[ip];
+            const amrex::Real pdt = ptd.rdata(BeamIdx::dt)[ip];
 
-            for (; i < n_subcycles; i++) {
+            xp += pdt * clight * 0.5_rt * gammap_inv * ux;
+            yp += pdt * clight * 0.5_rt * gammap_inv * uy;
 
-                if (zp < min_z) {
-                    // stop pushing particle if it is not on this slice anymore
-                    break;
-                }
-
-                const amrex::Real gammap_inv = amrex::Math::rsqrt( 1._rt + ux*ux + uy*uy + uz*uz);
-
-                // first we do half a step in x,y
-                // This is not required in z, which is pushed in one step later
-                xp += dt * clight * 0.5_rt * gammap_inv * ux;
-                yp += dt * clight * 0.5_rt * gammap_inv * uy;
-
-                if (enforceBC(ptd, ip, xp, yp, ux, uy)) return;
-
-                // Load field data from highest available MR level
-                MRLevelData level_data = level0data; // level 0
-                if (current_N_level > 2 && lev2_bounds.contains(xp, yp)) {
-                    level_data = level2data; // level 2
-                } else if (current_N_level > 1 && lev1_bounds.contains(xp, yp)) {
-                    level_data = level1data; // level 1
-                }
-                const auto [slice_arr, dx_inv, dy_inv, x_pos_offset, y_pos_offset] = level_data;
-
-                // define field at particle position reals
-                amrex::Real ExmByp = 0._rt, EypBxp = 0._rt, Ezp = 0._rt;
-                amrex::Real Bxp = 0._rt, Byp = 0._rt, Bzp = 0._rt;
-
-                // field gather for a single particle
-                doGatherShapeN<depos_order.value>(xp, yp, ExmByp, EypBxp, Ezp, Bxp, Byp, Bzp,
-                    slice_arr, psi_comp, ez_comp, bx_comp, by_comp, bz_comp,
-                    dx_inv, dy_inv, x_pos_offset, y_pos_offset);
-
-                if (c_do_ez_inzerp.value) {
-                    // Update Ez
-                    InterpolateEzInZ<depos_order.value>(Ezp,
-                        xp, yp, zp, x_pos_offset, y_pos_offset, min_z, dx_inv, dy_inv, dz_inv,
-                        ez_comp_prev, ez_comp_next, slice_arr);
-                }
-
-                if (c_use_external_fields.value) {
-                    // Update ExmByp, EypBxp, Ezp, Bxp, Byp, Bzp
-                    ApplyExternalField(xp, yp, zp, time, clight, ExmByp, EypBxp, Ezp, Bxp, Byp, Bzp,
-                        external_fields);
-                }
-
-                ExmByp *= inv_clight;
-                EypBxp *= inv_clight;
-                Ezp *= inv_clight;
-
-                // use intermediate fields to calculate next (n+1) transverse momenta
-                amrex::Real ux_next = ux + dt * charge_mass_ratio
-                    * ( ExmByp + ( 1._rt - uz * gammap_inv ) * Byp + uy * gammap_inv * Bzp);
-                amrex::Real uy_next = uy + dt * charge_mass_ratio
-                    * ( EypBxp - ( 1._rt - uz * gammap_inv ) * Bxp - ux * gammap_inv * Bzp);
-
-                // Now computing new longitudinal momentum
-                const amrex::Real ux_intermediate = ( ux_next + ux ) * 0.5_rt;
-                const amrex::Real uy_intermediate = ( uy_next + uy ) * 0.5_rt;
-                const amrex::Real uz_intermediate = uz
-                    + dt * 0.5_rt * charge_mass_ratio * Ezp;
-
-                const amrex::Real gamma_intermediate_inv = amrex::Math::rsqrt( 1._rt
-                    + ux_intermediate*ux_intermediate
-                    + uy_intermediate*uy_intermediate
-                    + uz_intermediate*uz_intermediate);
-
-                if (spin_tracking) {
-                    // Update spin
-                    PushSpin(spin,
-                        ExmByp, EypBxp, Ezp, Bxp, Byp, Bzp, ux_intermediate, uy_intermediate,
-                        uz_intermediate, gamma_intermediate_inv, charge_mass_ratio, dt, spin_anom);
-                }
-
-                amrex::Real uz_next = uz + dt * charge_mass_ratio
-                    * ( Ezp + ( ux_intermediate * Byp - uy_intermediate * Bxp )
-                    * gamma_intermediate_inv );
-
-                if (radiation_reaction) {
-                    // Update ux_next, uy_next, uz_next
-                    ApplyRadiationReaction(ux_next, uy_next, uz_next,
-                        ExmByp, EypBxp, Ezp, Bxp, Byp, Bzp, ux_intermediate,
-                        uy_intermediate, uz_intermediate, gamma_intermediate_inv,
-                        dt, rr_factor
-                    );
-                }
-
-                /* computing next gamma value */
-                const amrex::Real gamma_next_inv = amrex::Math::rsqrt( 1._rt
-                    + ux_next*ux_next
-                    + uy_next*uy_next
-                    + uz_next*uz_next);
-
-                /*
-                 * computing positions and setting momenta for the next timestep
-                 *(n+1)
-                 * The longitudinal position is updated here as well, but in
-                 * first-order (i.e. without the intermediary half-step) using
-                 * a simple Galilean transformation
-                 */
-                xp += dt * clight * 0.5_rt * gamma_next_inv * ux_next;
-                yp += dt * clight * 0.5_rt * gamma_next_inv * uy_next;
-                if (do_z_push) {
-                    zp += dt * clight * ( uz_next * gamma_next_inv - 1._rt );
-                }
-                ux = ux_next;
-                uy = uy_next;
-                uz = uz_next;
-
-            } // end for loop over n_subcycles
             if (enforceBC(ptd, ip, xp, yp, ux, uy)) return;
 
-            // Store particle data
+            MRLevelData level_data = level0data;
+            const auto [slice_arr, dx_inv, dy_inv, x_pos_offset, y_pos_offset] = level_data;
+
+            amrex::Real ExmByp = 0._rt, EypBxp = 0._rt, Ezp = 0._rt;
+            amrex::Real Bzp = 0._rt, ExpByp = 0._rt, EymBxp = 0._rt;
+
+            doGatherShapeN<depos_order.value>(xp, yp, slice_arr,
+                ExmByp, EypBxp, Ezp, Bzp, ExpByp, EymBxp,
+                ExmBy_this, EypBx_this, Ez_this, Bz_this, ExpBy_this, EymBx_this,
+                dx_inv, dy_inv, x_pos_offset, y_pos_offset);
+
+            ExmByp *= inv_clight;
+            EypBxp *= inv_clight;
+            Ezp *= inv_clight;
+            ExpByp *= inv_clight;
+            EymBxp *= inv_clight;
+
+            constexpr int nsub = 16;
+            for (int isub=0; isub<nsub; ++isub) {
+                const amrex::Real beta_x = ux * gammap_inv;
+                const amrex::Real beta_y = uy * gammap_inv;
+                const amrex::Real beta_z = uz * gammap_inv;
+
+                const amrex::Real dt_ux = charge_mass_ratio * (
+                    0.5 * ExpByp * (1._rt - beta_z)
+                    + 0.5 * ExmByp * (1._rt + beta_z)
+                    + beta_y * Bzp
+                );
+                const amrex::Real dt_uy = charge_mass_ratio * (
+                    0.5 * EymBxp * (1._rt - beta_z)
+                    + 0.5 * EypBxp * (1._rt + beta_z)
+                    - beta_x * Bzp
+                );
+                const amrex::Real dt_uz = charge_mass_ratio * (
+                    Ezp
+                    + beta_x * (ExpByp - ExmByp)
+                    - beta_y * (EypBxp - EymBxp)
+                );
+
+                ux += dt_ux * pdt * (1._rt / nsub);
+                uy += dt_uy * pdt * (1._rt / nsub);
+                uz += dt_uz * pdt * (1._rt / nsub);
+
+                gammap_inv = amrex::Math::rsqrt(1.0_rt + ux*ux + uy*uy + uz*uz);
+            }
+
+            xp += pdt * clight * 0.5_rt * gammap_inv * ux;
+            yp += pdt * clight * 0.5_rt * gammap_inv * uy;
+            zp += pdt * clight * (gammap_inv * uz - 1._rt);
+            time += pdt;
+
             ptd.pos(0, ip) = xp;
             ptd.pos(1, ip) = yp;
             ptd.pos(2, ip) = zp;
-            ptd.idata(BeamIdx::nsubcycles)[ip] = i;
             ptd.rdata(BeamIdx::ux)[ip] = ux;
             ptd.rdata(BeamIdx::uy)[ip] = uy;
             ptd.rdata(BeamIdx::uz)[ip] = uz;
-
-            if (spin_tracking) {
-                ptd.rdata(BeamIdx::sx)[ip] = spin[0];
-                ptd.rdata(BeamIdx::sy)[ip] = spin[1];
-                ptd.rdata(BeamIdx::sz)[ip] = spin[2];
-            }
+            ptd.rdata(BeamIdx::t)[ip] = time;
         });
 }

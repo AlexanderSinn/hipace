@@ -134,9 +134,6 @@ Diagnostic::Initialize (int nlev, bool use_laser) {
         geometry_name_to_diag_type.emplace(geom_name, DiagnosticData::diag_type::field);
         geometry_name_to_level.emplace(geom_name, lev);
         geometry_name_to_output_comps_map[geom_name] = Comps[WhichSlice::This];
-        // add derived diagnostics for Ex and Ey
-        geometry_name_to_output_comps_map[geom_name]["Ex"] = -1;
-        geometry_name_to_output_comps_map[geom_name]["Ey"] = -2;
     }
     if (use_laser) {
         std::string diag_name = "laser_diag";

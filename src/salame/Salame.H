@@ -27,42 +27,4 @@ SalameModule (Hipace* hipace, const int n_iter, const bool do_advance, int& last
               bool& overloaded, const int current_N_level, const bool is_first_step,
               const int islice, const amrex::Real relative_tolerance);
 
-/** Initialize Sx and Sy with the contribution from the SALAME beam
- * \param[in] hipace pointer to Hipace instance
- * \param[in] lev MR level
- */
-void
-SalameInitializeSxSyWithBeam (Hipace* hipace, const int lev);
-
-/** Approximate the extra jx and jy from the SALAME beam using Bx By and chi
- * \param[in] hipace pointer to Hipace instance
- * \param[in] lev MR level
- */
-void
-SalameGetJxJyFromBxBy (Hipace* hipace, const int lev);
-
-/** Advance plasma particles to the temp slice using only Bx and By from the SALAME beam
- * \param[in] hipace pointer to Hipace instance
- * \param[in] lev MR level
- */
-void
-SalameOnlyAdvancePlasma (Hipace* hipace, const int lev);
-
-/** Calculate the new weighting factor of the SALAME beam using the difference in E fields.
- * The average is weighted using the SALAME beam current.
- * \param[in] hipace pointer to Hipace instance
- * \param[in] current_N_level number of MR levels active on the current slice
- * \param[in] islice slice index of the whole domain
- * \return new beam weighting factor and new total SALAME beam current on this slice
- */
-std::pair<amrex::Real, amrex::Real>
-SalameGetW (Hipace* hipace, const int current_N_level, const int islice);
-
-/** Multiply SALAME beam weight on this slice with W
- * \param[in] W weight multiplier
- * \param[in] hipace pointer to Hipace instance
- */
-void
-SalameMultiplyBeamWeight (const amrex::Real W, Hipace* hipace);
-
 #endif //  SALAME_H_

@@ -49,6 +49,7 @@ public:
      * \param[in] lhs_mf Destination array, where the result is stored.
      */
     virtual void SolvePoissonEquation (amrex::MultiFab& lhs_mf) override final;
+    virtual void SolvePoissonEquation2 (amrex::MultiFab& lhs_mf, amrex::Real lhs_factor) override final;
 
     /** Position and relative factor used to apply inhomogeneous Dirichlet boundary conditions */
     virtual amrex::Real BoundaryOffset() override final { return 0.5; }

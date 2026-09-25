@@ -23,20 +23,11 @@ public:
      * \param[in] fields Field object, with 2D slice MultiFabs
      * \param[in] geom Geometry vector for all levels
      * \param[in] lev MR level
-     * \param[in] is_first_step if this is the first time step of the simulation
-     * \param[in] do_beam_jx_jy_deposition whether the beam deposits Jx and Jy
-     * \param[in] do_beam_jz_deposition whether the beam deposits Jz
-     * \param[in] do_beam_rhomjz_deposition whether the beam deposits rhomjz
-     * \param[in] which_slice defines if this, next or salame slice is handled
-     * \param[in] which_beam_slice defines if this or the next beam slice is handled
-     * \param[in] only_highest if the particles deposit only on their highest MR level
+     * \param[in] islice longitudinal slice
      */
     void DepositCurrentSlice (
         Fields& fields, amrex::Vector<amrex::Geometry> const& geom,
-        const int lev, const bool is_first_step,
-        const bool do_beam_jx_jy_deposition, const bool do_beam_jz_deposition,
-        const bool do_beam_rhomjz_deposition, const int which_slice, const int which_beam_slice,
-        const bool only_highest=false);
+        const int lev, const int islice);
 
     void shiftSlippedParticles (const int slice, amrex::Geometry const& geom);
 
@@ -144,13 +135,6 @@ public:
     bool AnySpeciesSalame ();
     amrex::Vector<std::string> m_names {"no_beam"}; /**< names of all beam containers */
     amrex::Vector<BeamParticleContainer> m_all_beams; /**< contains all beam containers */
-
-    void shiftBeamSlices () {
-        for (auto& beam : m_all_beams) {
-            beam.shiftBeamSlices();
-        }
-    }
-
 private:
 
     int m_nbeams {0}; /**< number of beam containers */

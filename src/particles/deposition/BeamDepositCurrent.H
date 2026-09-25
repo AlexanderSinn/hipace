@@ -29,11 +29,7 @@
 void
 DepositCurrentSlice (BeamParticleContainer& beam, Fields& fields,
                      amrex::Vector<amrex::Geometry> const& gm, int const lev,
-                     const bool do_beam_jx_jy_deposition,
-                     const bool do_beam_jz_deposition,
-                     const bool do_beam_rhomjz_deposition,
-                     const int which_slice, const int which_beam_slice,
-                     const bool only_highest=false);
+                     const int islice);
 
 
 #endif //  BEAMDEPOSITCURRENT_H_

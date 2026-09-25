@@ -26,7 +26,14 @@ class MultiLaser;
 
 /** \brief describes which slice with respect to the currently calculated is used */
 struct WhichSlice {
-    enum slice { Next=0, This, Previous, RhomJzIons, Salame, PCIter, PCPrevIter, N };
+    enum slice {
+        This,
+        Prev_t,
+        Prev_z,
+        Prev_zt,
+        Init,
+        N
+    };
 };
 
 struct assert_map : std::map<std::string, int> {
@@ -203,6 +210,8 @@ public:
      */
     void SolvePoissonPsiExmByEypBxEzBz (amrex::Vector<amrex::Geometry> const& geom,
                                         const int current_N_level);
+    void SolveFields (amrex::Vector<amrex::Geometry> const& geom);
+
     /** \brief Compute Ez on the slice container from J by solving a Poisson equation.
      * This function does all the necessary boundary interpolation between MR levels
      *
@@ -258,18 +267,6 @@ public:
     void MixAndShiftBfields (const amrex::Real relative_Bfield_error,
                              const amrex::Real relative_Bfield_error_prev_iter,
                              const amrex::Real predcorr_B_mixing_factor, const int lev);
-
-    /** \brief Function to calculate the relative B field error
-     * used in the predictor corrector loop
-     *
-     * \param[in] which_slice slice of Bx and By field
-     * \param[in] which_slice_iter slice of Bx and By field from the previous iteration
-     * \param[in] geom Geometry of the problem
-     * \param[in] current_N_level number of MR levels active on the current slice
-     */
-    amrex::Real ComputeRelBFieldError (const int which_slice, const int which_slice_iter,
-        const amrex::Vector<amrex::Geometry>& geom, const int current_N_level);
-
 
     /** Compute in-situ field diagnostics of current slice, store in member variable
      * \param[in] step current time step

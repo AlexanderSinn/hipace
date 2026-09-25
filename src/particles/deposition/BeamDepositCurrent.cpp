@@ -21,20 +21,11 @@
 void
 DepositCurrentSlice (BeamParticleContainer& beam, Fields& fields,
                      amrex::Vector<amrex::Geometry> const& gm, int const lev,
-                     const bool do_beam_jx_jy_deposition,
-                     const bool do_beam_jz_deposition,
-                     const bool do_beam_rhomjz_deposition,
-                     const int which_slice, const int which_beam_slice, const bool only_highest)
+                     const int islice)
 {
     HIPACE_PROFILE("DepositCurrentSlice_BeamParticleContainer()");
 
     using namespace amrex::literals;
-
-    AMREX_ALWAYS_ASSERT_WITH_MESSAGE(
-    which_slice == WhichSlice::This || which_slice == WhichSlice::Next
-    || which_slice == WhichSlice::Salame,
-    "Current deposition can only be done in this slice (WhichSlice::This), the next slice "
-    " (WhichSlice::Next), or the SALAME slice (WhichSlice::Salame)");
 
     AMREX_ALWAYS_ASSERT_WITH_MESSAGE(Hipace::m_depos_order_z == 0 || Hipace::m_depos_order_z == 2,
         "Only order 0 or 2 deposition is allowed for beam per-slice Ez interpolation");
@@ -44,20 +35,14 @@ DepositCurrentSlice (BeamParticleContainer& beam, Fields& fields,
     // parallelization, the index we want in the slice multifab is always 0.
     // Fix later.
     amrex::FArrayBox& isl_fab = fields.getSlices(lev)[0];
-    AMREX_ALWAYS_ASSERT_WITH_MESSAGE(isl_fab.box().ixType().cellCentered(),
-        "jx, jy, jz and rho must be nodal in all directions.");
-
-    if (!do_beam_jx_jy_deposition && !do_beam_jz_deposition && !do_beam_rhomjz_deposition) return;
 
     // we deposit to the beam currents, because the explicit solver
     // requires sometimes just the beam currents
     // Do not access the field if the kernel later does not deposit into it,
     // the field might not be allocated. Use -1 as dummy component instead
-    const std::string beam_str = Hipace::m_explicit ? "_beam" : "";
-    const int     jxb_cmp = do_beam_jx_jy_deposition  ? Comps[which_slice]["jx"    +beam_str] : -1;
-    const int     jyb_cmp = do_beam_jx_jy_deposition  ? Comps[which_slice]["jy"    +beam_str] : -1;
-    const int     jzb_cmp = do_beam_jz_deposition     ? Comps[which_slice]["jz"    +beam_str] : -1;
-    const int rhomjzb_cmp = do_beam_rhomjz_deposition ? Comps[which_slice]["rhomjz"+beam_str] : -1;
+    const int     jxb_cmp = Comps[WhichSlice::This]["jx"];
+    const int     jyb_cmp = Comps[WhichSlice::This]["jy"];
+    const int rhomjzb_cmp = Comps[WhichSlice::This]["rhomjz"];
 
     // Offset for converting positions to indexes
     amrex::Real const x_pos_offset = GetPosOffset(0, gm[lev], isl_fab.box());
@@ -66,23 +51,19 @@ DepositCurrentSlice (BeamParticleContainer& beam, Fields& fields,
     PhysConst const phys_const = get_phys_const();
 
     // Extract box properties
+    const amrex::Real dt = Hipace::GetInstance().m_dt;
+    const amrex::Real dti = 1 / dt;
     const amrex::Real dxi = gm[lev].InvCellSize(0);
     const amrex::Real dyi = gm[lev].InvCellSize(1);
+    const amrex::Real dz = gm[lev].CellSize(2);
     const amrex::Real dzi = gm[lev].InvCellSize(2);
-    amrex::Real invvol = dxi * dyi * dzi;
-
-    if (Hipace::m_normalized_units) {
-        if (lev == 0) {
-            invvol = 1._rt;
-        } else {
-            // re-scaling the weight in normalized units to get the same charge density as on lev 0
-            // Not necessary in SI units, there the weight is the actual charge and not the density
-            invvol = gm[0].CellSize(0) * gm[0].CellSize(1) * dxi * dyi;
-        }
-    }
+    const amrex::Real invvol = dxi * dyi * dzi;
+    const amrex::Real zeta_min = gm[lev].ProbLo(2) + dz * (islice - gm[lev].Domain().smallEnd(2));
 
     const amrex::Real clight = phys_const.c;
     const amrex::Real q = beam.m_charge;
+
+    const amrex::Real hipace_next_time = Hipace::GetInstance().m_physical_time + dt;
 
     amrex::AnyCTO(
         // use compile-time options
@@ -96,22 +77,17 @@ DepositCurrentSlice (BeamParticleContainer& beam, Fields& fields,
             constexpr int depos_order = ctos[0];
             constexpr int stencil_size = depos_order + 1;
             SharedMemoryDeposition<stencil_size, stencil_size, true>(
-                beam.getNumParticles(which_beam_slice), is_valid, get_cell, deposit,
+                beam.getNumParticles(WhichBeamSlice::This), is_valid, get_cell, deposit,
                 isl_fab.array(), isl_fab.box(),
-                beam.getBeamSlice(which_beam_slice).getParticleTileData(),
+                beam.getBeamSlice(WhichBeamSlice::This).getParticleTileData(),
                 amrex::GpuArray<int, 0>{},
-                amrex::GpuArray<int, 4>{jxb_cmp, jyb_cmp, jzb_cmp, rhomjzb_cmp});
+                amrex::GpuArray<int, 3>{jxb_cmp, jyb_cmp, rhomjzb_cmp});
         },
         // is_valid
         // return whether the particle is valid and should deposit
         [=] AMREX_GPU_DEVICE (int ip, auto ptd, auto /*depos_order*/)
         {
-            // Skip invalid particles and ghost particles not in the last slice
-            // beam deposits only up to its finest level
-            return ptd.id(ip).is_valid() &&
-                (only_highest ?
-                    (ptd.idata(BeamIdx::mr_level)[ip] == lev) :
-                    (ptd.idata(BeamIdx::mr_level)[ip] >= lev));
+            return ptd.id(ip).is_valid();
         },
         // get_cell
         // return the lowest cell index that the particle deposits into
@@ -131,26 +107,40 @@ DepositCurrentSlice (BeamParticleContainer& beam, Fields& fields,
         [=] AMREX_GPU_DEVICE (int ip, auto ptd,
                               Array3<amrex::Real> arr,
                               auto /*cache_idx*/, auto depos_idx,
-                              auto depos_order) {
-            // --- Get particle quantities
+                              auto depos_order)
+        {
+            const amrex::Real xp = ptd.pos(0, ip);
+            const amrex::Real yp = ptd.pos(1, ip);
+            const amrex::Real zp = ptd.pos(2, ip);
+
             const amrex::Real ux = ptd.rdata(BeamIdx::ux)[ip];
             const amrex::Real uy = ptd.rdata(BeamIdx::uy)[ip];
             const amrex::Real uz = ptd.rdata(BeamIdx::uz)[ip];
 
-            const amrex::Real gaminv = 1.0_rt/std::sqrt(1.0_rt + ux*ux + uy*uy + uz*uz);
-            const amrex::Real wq = q*ptd.rdata(BeamIdx::w)[ip]*invvol;
+            const amrex::Real gaminv = amrex::Math::rsqrt(1.0_rt + ux*ux + uy*uy + uz*uz);
 
             const amrex::Real betax = ux*gaminv;
             const amrex::Real betay = uy*gaminv;
             const amrex::Real betaz = uz*gaminv;
+
+            const amrex::Real time = ptd.rdata(BeamIdx::t)[ip];
+
+            amrex::Real next_time = time + (zp - zeta_min) / (clight*(1._rt - betaz));
+            next_time = std::min(next_time, hipace_next_time);
+
+            const amrex::Real pdt = next_time - time;
+            ptd.rdata(BeamIdx::dt)[ip] = pdt;
+            const amrex::Real weight_factor = pdt * dti;
+
+            const amrex::Real wq = q * ptd.rdata(BeamIdx::w)[ip] * invvol * weight_factor;
+
             // wqx, wqy wqz are particle current in each direction
             const amrex::Real wqx = clight*wq*betax;
             const amrex::Real wqy = clight*wq*betay;
-            const amrex::Real wqz = clight*wq*betaz;
-            const amrex::Real wqrhomjz = wq*(1._rt-betaz);
+            const amrex::Real wqrhomjz = wq*(1._rt - betaz);
 
-            const amrex::Real xmid = (ptd.pos(0, ip) - x_pos_offset)*dxi;
-            const amrex::Real ymid = (ptd.pos(1, ip) - y_pos_offset)*dyi;
+            const amrex::Real xmid = (xp - x_pos_offset)*dxi;
+            const amrex::Real ymid = (yp - y_pos_offset)*dyi;
 
             // Deposit current into jx, jy, jz, rhomjz
             for (int iy=0; iy<=depos_order; iy++){
@@ -160,20 +150,12 @@ DepositCurrentSlice (BeamParticleContainer& beam, Fields& fields,
                     auto [shape_y, j] = shape_factor<depos_order>(ymid, iy);
                     auto [shape_x, i] = shape_factor<depos_order>(xmid, ix);
 
-                    if (depos_idx[0] != -1) { // do_beam_jx_jy_deposition
-                        amrex::Gpu::Atomic::Add(
-                            arr.ptr(i, j, depos_idx[0]), shape_x * shape_y * wqx);
-                        amrex::Gpu::Atomic::Add(
-                            arr.ptr(i, j, depos_idx[1]), shape_x * shape_y * wqy);
-                    }
-                    if (depos_idx[2] != -1) { // do_beam_jz_deposition
-                        amrex::Gpu::Atomic::Add(
-                            arr.ptr(i, j, depos_idx[2]), shape_x * shape_y * wqz);
-                    }
-                    if (depos_idx[3] != -1) { // do_beam_rhomjz_deposition
-                        amrex::Gpu::Atomic::Add(
-                            arr.ptr(i, j, depos_idx[3]), shape_x * shape_y * wqrhomjz);
-                    }
+                    amrex::Gpu::Atomic::Add(
+                        arr.ptr(i, j, depos_idx[0]), shape_x * shape_y * wqx);
+                    amrex::Gpu::Atomic::Add(
+                        arr.ptr(i, j, depos_idx[1]), shape_x * shape_y * wqy);
+                    amrex::Gpu::Atomic::Add(
+                        arr.ptr(i, j, depos_idx[2]), shape_x * shape_y * wqrhomjz);
                 }
             }
         });

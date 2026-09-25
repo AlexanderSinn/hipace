@@ -105,6 +105,53 @@ void doGatherShapeN (const amrex::Real xp,
     }
 }
 
+template <int depos_order_xy>
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+void doGatherShapeN (const amrex::Real xp,
+                     const amrex::Real yp,
+                     Array3<amrex::Real const> const& slice_arr,
+                     amrex::Real& ExmByp,
+                     amrex::Real& EypBxp,
+                     amrex::Real& Ezp,
+                     amrex::Real& Bzp,
+                     amrex::Real& ExpBy,
+                     amrex::Real& EymBx,
+                     const int ExmByp_comp,
+                     const int EypBxp_comp,
+                     const int Ezp_comp,
+                     const int Bzp_comp,
+                     const int ExpBy_comp,
+                     const int EymBx_comp,
+                     const amrex::Real dx_inv,
+                     const amrex::Real dy_inv,
+                     const amrex::Real x_pos_offset,
+                     const amrex::Real y_pos_offset)
+{
+    // x,y direction
+    const amrex::Real x = (xp-x_pos_offset)*dx_inv;
+    const amrex::Real y = (yp-y_pos_offset)*dy_inv;
+
+    // Gather field on particle from field on grid
+
+    HIPACE_LOOP_UNROLL
+    for (int iy=0; iy<=depos_order_xy; iy++){
+        HIPACE_LOOP_UNROLL
+        for (int ix=0; ix<=depos_order_xy; ix++){
+
+            // Compute shape factors
+            auto [shape_y, j] = shape_factor<depos_order_xy>(y, iy);
+            auto [shape_x, i] = shape_factor<depos_order_xy>(x, ix);
+
+            ExmByp += (shape_x * shape_y) * slice_arr(i, j, ExmByp_comp);
+            EypBxp += (shape_x * shape_y) * slice_arr(i, j, EypBxp_comp);
+            Ezp += (shape_x * shape_y) * slice_arr(i, j, Ezp_comp);
+            Bzp += (shape_x * shape_y) * slice_arr(i, j, Bzp_comp);
+            ExpBy += (shape_x * shape_y) * slice_arr(i, j, ExpBy_comp);
+            EymBx += (shape_x * shape_y) * slice_arr(i, j, EymBx_comp);
+        }
+    }
+}
+
 
 
 /**

@@ -94,6 +94,47 @@ dst2_out_mult_dst3_in (Array2<amrex::GpuComplex<amrex::Real>> const& inout, int 
 }
 
 inline void
+dst2_out_mult_dst3_in_v2 (Array2<amrex::GpuComplex<amrex::Real>> const& inout, int nx, int ny,
+                       const amrex::GpuComplex<amrex::Real>* omega,
+                       const amrex::Real * eig_x, const amrex::Real * eig_y,
+                       const amrex::Real acoeff)
+{
+    const amrex::Real acoeff_fac = acoeff * nx * ny;
+
+    auto mult = [=] AMREX_GPU_DEVICE (int i, int j) {
+        const amrex::Real k = eig_x[i] + eig_y[j] + acoeff_fac;
+
+        if (k != 0) {
+            return 1 / k;
+        } else {
+            return amrex::Real(0);
+        }
+    };
+
+    amrex::ParallelFor(amrex::BoxND<2>{{0, 0}, {ny/2, nx-1}},
+        [=] AMREX_GPU_DEVICE (int j, int i){
+            auto c = inout(j, i);
+
+            if (j == 0) {
+                c.m_real *= mult(i, ny-1);
+                c.m_imag = 0;
+            } else {
+                auto o = omega[j];
+                auto m1 = mult(i, ny-j-1);
+                auto m2 = mult(i, j-1);
+                c *= o;
+                o.m_imag = - o.m_imag;
+                c = o * amrex::GpuComplex<amrex::Real>{
+                    c.real() * m1,
+                    c.imag() * m2
+                };
+            }
+
+            inout(j, i) = c;
+        });
+}
+
+inline void
 dst2_out_t_in (Array2<amrex::GpuComplex<amrex::Real>> const& in, Array2<amrex::Real> const& out,
                int nx, int ny, const amrex::GpuComplex<amrex::Real>* omega) {
 #if defined(AMREX_USE_CUDA) || defined(AMREX_USE_HIP)
@@ -270,7 +311,7 @@ dst3_out_t_in (Array2<amrex::Real> const& in, Array2<amrex::GpuComplex<amrex::Re
 void
 FFTPoissonSolverDirichletQuick::define (amrex::BoxArray const& a_realspace_ba,
                                        amrex::DistributionMapping const& dm,
-                                       amrex::Geometry const& gm )
+                                       amrex::Geometry const& gm)
 {
     HIPACE_PROFILE("FFTPoissonSolverDirichletQuick::define()");
     using namespace amrex::literals;
@@ -391,6 +432,53 @@ FFTPoissonSolverDirichletQuick::SolvePoissonEquation (amrex::MultiFab& lhs_mf)
     m_y_r2cfft.Execute();
 
     dst2_out_mult_dst3_in(comp_arr_t, nx, ny, m_omega_y.dataPtr(), m_eig_x.dataPtr(), m_eig_y.dataPtr());
+
+    m_y_c2rfft.Execute();
+
+    dst3_out_t_in(real_arr_t, comp_arr, nx, ny, m_omega_x.dataPtr());
+
+    m_x_c2rfft.Execute();
+
+    amrex::ParallelFor(amrex::BoxND<2>{{0, 0}, {nx-1, ny-1}},
+        [=] AMREX_GPU_DEVICE (int i, int j){
+            lhs_arr(i, j) = dst3_out(real_arr, i, j, nx);
+        });
+}
+
+void
+FFTPoissonSolverDirichletQuick::SolvePoissonEquation2 (amrex::MultiFab& lhs_mf, amrex::Real acoeff)
+{
+    HIPACE_PROFILE("FFTPoissonSolverDirichletQuick::SolvePoissonEquation()");
+
+    const int nx = m_stagingArea[0].box().length(0); // initially contiguous
+    const int ny = m_stagingArea[0].box().length(1); // contiguous after transpose
+
+    Array2<amrex::Real> input_arr {{m_stagingArea[0].dataPtr(), {0,0,0}, {nx,ny,1}, 1}};
+
+    Array2<amrex::Real> real_arr {{m_real_array.dataPtr(), {0,0,0}, {nx,ny,1}, 1}};
+    Array2<amrex::Real> real_arr_t {{m_real_array.dataPtr(), {0,0,0}, {ny,nx,1}, 1}};
+
+    Array2<amrex::GpuComplex<amrex::Real>> comp_arr {{m_comp_array.dataPtr(), {0,0,0}, {nx/2+1,ny,1}, 1}};
+    Array2<amrex::GpuComplex<amrex::Real>> comp_arr_t {{m_comp_array.dataPtr(), {0,0,0}, {ny/2+1,nx,1}, 1}};
+
+    amrex::Box lhs_bx = lhs_mf[0].box();
+    // shift box to handle ghost cells properly
+    lhs_bx -= m_stagingArea[0].box().smallEnd();
+    Array2<amrex::Real> lhs_arr {{lhs_mf[0].dataPtr(), amrex::begin(lhs_bx), amrex::end(lhs_bx), 1}};
+
+    amrex::ParallelFor(amrex::BoxND<2>{{0, 0}, {nx-1, ny-1}},
+        [=] AMREX_GPU_DEVICE (int i, int j){
+            real_arr(i, j) = dst2_in(input_arr, i, j, nx);
+        });
+
+    m_x_r2cfft.Execute();
+
+    dst2_out_t_in(comp_arr, real_arr_t, nx, ny, m_omega_x.dataPtr());
+
+    m_y_r2cfft.Execute();
+
+    dst2_out_mult_dst3_in_v2(comp_arr_t, nx, ny, m_omega_y.dataPtr(),
+                             m_eig_x.dataPtr(), m_eig_y.dataPtr(), acoeff);
 
     m_y_c2rfft.Execute();
 

@@ -27,23 +27,18 @@ struct BeamIdx
         x=0, y, z,  // position
         w,          // weight
         ux, uy, uz, // momentum
+        t, dt,
         real_nattribs_in_buffer,
-        real_nattribs=real_nattribs_in_buffer,
-        sx=real_nattribs, sy, sz
+        real_nattribs=real_nattribs_in_buffer
     };
     enum {
-        // no extra components stored in MultiBuffer, besides 64bit idcpu
         int_nattribs_in_buffer,
-        // nsubcycles: by how many subcycles was this particle pushed already
-        // nsubcycles is not stored or communicated in MultiBuffer
-        nsubcycles=int_nattribs_in_buffer,
-        mr_level,
-        int_nattribs
+        int_nattribs=int_nattribs_in_buffer
     };
 };
 
 struct WhichBeamSlice {
-    enum beam_slice : int { Next=0, This, N };
+    enum beam_slice : int { This=0, Next_t, N };
 };
 
 using BeamTile = amrex::ParticleTileRT<amrex::Real, int>;
@@ -145,28 +140,19 @@ public:
 
     std::string get_name () const {return m_name;}
 
-    void shiftBeamSlices () {
-        m_slice_permutation = (m_slice_permutation + 1) % WhichBeamSlice::N;
-        resize(WhichBeamSlice::Next, 0, 0);
-    }
-
     BeamTile& getBeamSlice (int which_slice) {
-        return m_slices[(which_slice + m_slice_permutation) % WhichBeamSlice::N];
+        return m_slices[which_slice];
     }
 
     const BeamTile& getBeamSlice (int which_slice) const {
-        return m_slices[(which_slice + m_slice_permutation) % WhichBeamSlice::N];
+        return m_slices[which_slice];
     }
 
     int getNumParticles (int which_slice) const {
-        return m_num_particles_without_slipped[(which_slice + m_slice_permutation) % WhichBeamSlice::N];
+        return m_slices[which_slice].numParticles();
     }
 
-    int getNumParticlesIncludingSlipped (int which_slice) const {
-        return m_num_particles_with_slipped[(which_slice + m_slice_permutation) % WhichBeamSlice::N];
-    }
-
-    void resize (int which_slice, int num_particles, int num_slipped_particles);
+    void resize (int which_slice, int num_particles);
 
     BeamTile& getBeamInitSlice () {
         return m_init_slice;
@@ -178,26 +164,19 @@ public:
         return m_total_num_particles;
     }
 
-    int numRealComponents () const {
-        return BeamIdx::real_nattribs + (m_do_spin_tracking ? 3 : 0);
-    }
+    int numRealComponents () const { return BeamIdx::real_nattribs; }
     int numIntComponents () const { return BeamIdx::int_nattribs; }
 
     bool communicateIdCpuComponent () const { return true; }
     bool communicateRealComponent (int rcomp) const {
-        // communicate all compile-time and runtime real components
-        return rcomp < numRealComponents();
+        return true;
     }
     bool communicateIntComponent (int icomp) const {
-        // don't communicate nsubcycles or mr_level
-        return icomp < BeamIdx::int_nattribs_in_buffer;
+        return true;
     }
 
 private:
-    int m_slice_permutation = 0;
     std::array<BeamTile, WhichBeamSlice::N> m_slices {};
-    std::array<int, WhichBeamSlice::N> m_num_particles_without_slipped {};
-    std::array<int, WhichBeamSlice::N> m_num_particles_with_slipped {};
     BeamTile m_init_slice {};
     BoxSorter m_init_sorter;
     uint64_t m_total_num_particles = 0;

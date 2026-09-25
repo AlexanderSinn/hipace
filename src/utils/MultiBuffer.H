@@ -10,7 +10,7 @@
 
 #include <AMReX_AmrCore.H>
 #include "particles/beam/MultiBeam.H"
-#include "laser/MultiLaser.H"
+#include "fields/Fields.H"
 
 // declare MPI datatypes if compiled without MPI
 using namespace amrex::mpidatatypes;
@@ -21,13 +21,13 @@ class MultiBuffer
 public:
 
     // initialize MultiBuffer and open initial receive requests
-    void initialize (int nslices, MultiBeam& beams, MultiLaser& laser);
+    void initialize (int nslices, MultiBeam& beams, Fields& laser);
 
-    // receive data from previous rank and unpack it into MultiBeam and MultiLaser
-    void get_data (int slice, MultiBeam& beams, MultiLaser& laser, int beam_slice);
+    // receive data from previous rank and unpack it into MultiBeam and Fields
+    void get_data (int slice, MultiBeam& beams, Fields& laser, int beam_slice);
 
-    // pack data from MultiBeam and MultiLaser into buffer and send it to the next rank
-    void put_data (int slice, MultiBeam& beams, MultiLaser& laser, int beam_slice,
+    // pack data from MultiBeam and Fields into buffer and send it to the next rank
+    void put_data (int slice, MultiBeam& beams, Fields& laser, int beam_slice,
                    bool is_last_time_step);
 
     // receive physical time from previous rank
@@ -69,7 +69,7 @@ private:
         std::vector<std::optional<std::size_t>> m_beam_idcpu;
         std::vector<std::map<int, std::size_t>> m_beam_real;
         std::vector<std::map<int, std::size_t>> m_beam_int;
-        std::map<int, std::size_t> m_laser;
+        std::map<int, std::size_t> m_fields;
         std::size_t m_total;
     };
 
@@ -116,7 +116,7 @@ private:
     bool m_async_memcpy = true;
     int m_nslices = 0;
     int m_nbeams = 0;
-    int m_laser_ncomp = 4;
+    int m_fields_ncomp = 6;
     /** How many slices of beam particles can be received in advance */
     int m_max_leading_slices = std::numeric_limits<int>::max();
     /** How many slices of beam particles can be stored before being sent */
@@ -162,10 +162,10 @@ private:
     void async_progress (int slice);
 
     // write MultiBeam sizes into the metadata array
-    void write_metadata (int slice, MultiBeam& beams, MultiLaser& laser, int beam_slice);
+    void write_metadata (int slice, MultiBeam& beams, Fields& laser, int beam_slice);
 
     // helper function to get location of individual arrays inside a buffer
-    BufferOffset get_buffer_offset (int slice, MultiBeam& beams, MultiLaser& laser);
+    BufferOffset get_buffer_offset (int slice, MultiBeam& beams, Fields& laser);
 
     // copy gpu array into buffer at buffer_offset, either dtoh or dtod
     void memcpy_to_buffer (int slice, std::size_t buffer_offset,
@@ -183,13 +183,13 @@ private:
     void async_memcpy_to_buffer_finish ();
     void async_memcpy_from_buffer_finish ();
 
-    // pack MultiBeam and MultiLaser into buffer
-    void pack_data (int slice, MultiBeam& beams, MultiLaser& laser, int beam_slice);
+    // pack MultiBeam and Fields into buffer
+    void pack_data (int slice, MultiBeam& beams, Fields& laser, int beam_slice);
 
 public: // needed for ParallelFor
 
-    // unpack MultiBeam and MultiLaser from buffer
-    void unpack_data (int slice, MultiBeam& beams, MultiLaser& laser, int beam_slice);
+    // unpack MultiBeam and Fields from buffer
+    void unpack_data (int slice, MultiBeam& beams, Fields& laser, int beam_slice);
 
 };
 

@@ -116,47 +116,13 @@ public:
      */
     void SolveOneSlice (int islice, int step, bool is_first_step, bool is_last_step);
 
-    /**
-     * \brief Initialize Sx and Sy with the beam contributions
-     *
-     * \param[in] lev MR level
-     */
-    void InitializeSxSyWithBeam (const int lev);
-
-    /**
-     * \brief Knowing the sources Sx, Sy and chi, apply MG to solve for Bx, By
-     *
-     * \param[in] lev MR level
-     * \param[in] which_slice defines if this or the salame slice is handled
-     */
-    void ExplicitMGSolveBxBy (const int lev, const int which_slice);
-
-    /**
-     * \brief Compute Ez on the Next slice
-     *
-     * \param[in] current_N_level number of MR levels
-     * \param[in] is_first_step if this is the first time step of the simulation
-     */
-    void CalculateEzNext (const int current_N_level, const bool is_first_step);
+    void SetInitialConditions (const int islice);
 
     /** \brief Reset plasma and field slice quantities to initial value.
      *
      * Typically done at the beginning of each iteration.
      */
     void ResetAllQuantities ();
-
-    /**
-     * \brief does Coulomb collisions between plasmas and beams
-     */
-    void doCoulombCollision ();
-
-    /**
-     * \brief add external fields to the field grid
-     *
-     * \param[in] lev MR level
-     * \param[in] islice slice number
-     */
-    void AddGridExternalFields (const int lev, const int islice);
 
     /**
        \brief Returns the rank id of the head rank.
@@ -346,9 +312,9 @@ public:
     /** Whether grid external fields should be used for this beam */
     bool m_use_grid_external_fields = false;
     /** Grid external field functions for Bx By Bz Psi Ez*/
-    amrex::GpuArray<amrex::ParserExecutor<4>, 5> m_grid_external_fields;
+    amrex::GpuArray<amrex::ParserExecutor<4>, 2> m_grid_external_fields;
     /** Owns data for m_grid_external_fields */
-    amrex::Array<amrex::Parser, 5> m_grid_external_fields_parser;
+    amrex::Array<amrex::Parser, 2> m_grid_external_fields_parser;
 
 private:
 
@@ -374,24 +340,6 @@ private:
 
     /** \brief get diagnostics Component names of Fields to output */
     amrex::Vector<std::string>& getDiagBeamNames () { return m_diags.getBeamNames(); }
-
-    /** \brief Predictor-corrector loop to calculate Bx and By.
-     * 1. an initial Bx and By value is guessed.
-     * 2. Using this Bx and By values, the plasma particles are advanced to the next slice,
-     *  and deposit their current there.
-     * 3. With that current, Bx and By can be calculated.
-     * 4. Mixing the calculated Bx and By with the previous guess a new Bx and By is calculated
-     * 5. 2.-4. are repeated for a fixed number of iterations
-     *
-     * This modifies component Bx and By, of slice 1 in m_fields.m_slices
-     * as well as the plasma particle force terms.
-     *
-     * \param[in] islice longitudinal slice
-     * \param[in] current_N_level number of MR levels active on the current slice
-     * \param[in] is_first_step if this is the first time step of the simulation
-     */
-    void PredictorCorrectorLoopToSolveBxBy (const int islice, const int current_N_level,
-                                            const bool is_first_step);
 };
 
 #endif

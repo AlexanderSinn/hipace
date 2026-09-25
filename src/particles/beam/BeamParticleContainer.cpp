@@ -407,36 +407,6 @@ BeamParticleContainer::InitData (const amrex::Geometry& geom)
 void BeamParticleContainer::TagByLevel (const int current_N_level,
     amrex::Vector<amrex::Geometry> const& geom3D, const int which_slice)
 {
-    HIPACE_PROFILE("BeamParticleContainer::TagByLevel()");
-
-    auto& slice = getBeamSlice(which_slice);
-    const amrex::Real * const pos_x = slice.GetRealData(BeamIdx::x).data();
-    const amrex::Real * const pos_y = slice.GetRealData(BeamIdx::y).data();
-    int * const p_mr_level = slice.GetIntData(BeamIdx::mr_level).data();
-
-    const int lev1_idx = std::min(1, current_N_level-1);
-    const int lev2_idx = std::min(2, current_N_level-1);
-
-    const CheckDomainBounds lev1_bounds {geom3D[lev1_idx]};
-    const CheckDomainBounds lev2_bounds {geom3D[lev2_idx]};
-
-    amrex::ParallelFor(getNumParticlesIncludingSlipped(which_slice),
-        [=] AMREX_GPU_DEVICE (int ip) {
-            const amrex::Real xp = pos_x[ip];
-            const amrex::Real yp = pos_y[ip];
-
-            if (current_N_level > 2 && lev2_bounds.contains(xp,yp)) {
-                // level 2
-                p_mr_level[ip] = 2;
-            } else if (current_N_level > 1 && lev1_bounds.contains(xp,yp)) {
-                // level 1
-                p_mr_level[ip] = 1;
-            } else {
-                // level 0
-                p_mr_level[ip] = 0;
-            }
-        }
-    );
 }
 
 void
@@ -453,14 +423,13 @@ BeamParticleContainer::initializeSlice (int slice, int which_slice) {
         HIPACE_PROFILE("BeamParticleContainer::initializeSlice()");
         const int num_particles = m_init_sorter.m_box_counts_cpu[slice];
 
-        resize(which_slice, num_particles, 0);
+        resize(which_slice, num_particles);
 
         auto ptd_init = getBeamInitSlice().getParticleTileData();
         auto ptd = getBeamSlice(which_slice).getParticleTileData();
 
         const int slice_offset = m_init_sorter.m_box_offsets_cpu[slice];
         const auto permutations = m_init_sorter.m_box_permutations.dataPtr();
-        const bool do_spin_tracking = m_do_spin_tracking;
 
         amrex::ParallelFor(num_particles,
             [=] AMREX_GPU_DEVICE (const int ip) {
@@ -472,46 +441,20 @@ BeamParticleContainer::initializeSlice (int slice, int which_slice) {
                 ptd.rdata(BeamIdx::ux)[ip] = ptd_init.rdata(BeamIdx::ux)[idx_src];
                 ptd.rdata(BeamIdx::uy)[ip] = ptd_init.rdata(BeamIdx::uy)[idx_src];
                 ptd.rdata(BeamIdx::uz)[ip] = ptd_init.rdata(BeamIdx::uz)[idx_src];
-                if (do_spin_tracking) {
-                    ptd.rdata(BeamIdx::sx)[ip] = ptd_init.rdata(BeamIdx::sx)[idx_src];
-                    ptd.rdata(BeamIdx::sy)[ip] = ptd_init.rdata(BeamIdx::sy)[idx_src];
-                    ptd.rdata(BeamIdx::sz)[ip] = ptd_init.rdata(BeamIdx::sz)[idx_src];
-                }
                 ptd.idcpu(ip) = ptd_init.idcpu(idx_src);
-                ptd.idata(BeamIdx::nsubcycles)[ip] = 0;
-                ptd.idata(BeamIdx::mr_level)[ip] = 0;
-            }
-        );
-    }
-
-    if (m_do_spin_tracking && m_injection_type != "from_file" && m_injection_type != "from_list" ) {
-        HIPACE_PROFILE("BeamParticleContainer::initializeSpin()");
-        auto ptd = getBeamSlice(which_slice).getParticleTileData();
-
-        const amrex::RealVect initial_spin_norm = m_initial_spin / m_initial_spin.vectorLength();
-        amrex::ParallelFor(getNumParticles(which_slice),
-            [=] AMREX_GPU_DEVICE (const int ip) {
-                ptd.rdata(BeamIdx::sx)[ip] = initial_spin_norm[0];
-                ptd.rdata(BeamIdx::sy)[ip] = initial_spin_norm[1];
-                ptd.rdata(BeamIdx::sz)[ip] = initial_spin_norm[2];
             }
         );
     }
 
     // remove invalid particles so they don't show up in the beam diagnostic of the first time step
     amrex::removeInvalidParticles(getBeamSlice(which_slice));
-    resize(which_slice, getBeamSlice(which_slice).size(), 0);
+    resize(which_slice, getBeamSlice(which_slice).size());
 }
 
 void
-BeamParticleContainer::resize (int which_slice, int num_particles, int num_slipped_particles) {
+BeamParticleContainer::resize (int which_slice, int num_particles) {
     HIPACE_PROFILE("BeamParticleContainer::resize()");
-
-    m_num_particles_without_slipped[(which_slice + m_slice_permutation) % WhichBeamSlice::N] =
-        num_particles;
-    m_num_particles_with_slipped[(which_slice + m_slice_permutation) % WhichBeamSlice::N] =
-        num_particles + num_slipped_particles;
-    getBeamSlice(which_slice).resize(num_particles + num_slipped_particles);
+    getBeamSlice(which_slice).resize(num_particles);
 }
 
 void
@@ -607,42 +550,6 @@ BeamParticleContainer::InSituComputeDiags (int islice)
     for (int i=0; i<m_insitu_nip; ++i) {
         m_insitu_idata[islice + i * m_nslices] = int_arr[i];
         m_insitu_sum_idata[i] += int_arr[i];
-    }
-
-    if (m_do_spin_tracking) {
-        amrex::TypeMultiplier<amrex::ReduceOps, amrex::ReduceOpSum[m_insitu_n_spin]> reduce_op_spin;
-        amrex::TypeMultiplier<amrex::ReduceData, amrex::Real[m_insitu_n_spin]> reduce_data_spin(reduce_op_spin);
-        using ReduceTupleSpin = typename decltype(reduce_data_spin)::Type;
-        reduce_op_spin.eval(
-            getNumParticles(WhichBeamSlice::This), reduce_data_spin,
-            [=] AMREX_GPU_DEVICE (int ip) -> ReduceTupleSpin
-            {
-                const amrex::Real x = ptd.pos(0, ip);
-                const amrex::Real y = ptd.pos(1, ip);
-                const amrex::Real sx = ptd.rdata(BeamIdx::sx)[ip];
-                const amrex::Real sy = ptd.rdata(BeamIdx::sy)[ip];
-                const amrex::Real sz = ptd.rdata(BeamIdx::sz)[ip];
-                const amrex::Real w = ptd.rdata(BeamIdx::w)[ip];
-
-                if (!ptd.id(ip).is_valid() || x*x + y*y > insitu_radius_sq) {
-                    return amrex::IdentityTuple(ReduceTupleSpin{}, reduce_op_spin);
-                }
-                return {            // Tuple contains:
-                    w*sx,           // 0    [sx]
-                    w*sx*sx,        // 1    [sx^2]
-                    w*sy,           // 2    [sy]
-                    w*sy*sy,        // 3    [sy^2]
-                    w*sz,           // 4    [sz]
-                    w*sz*sz,        // 5    [sz^2]
-                };
-            });
-
-        auto spin_arr = amrex::tupleToArray(reduce_data_spin.value());
-
-        for (int i=0; i<m_insitu_n_spin; ++i) {
-            m_insitu_spin_data[islice + i * m_nslices] = spin_arr[i] * sum_w_inv;
-            m_insitu_sum_spin_data[i] += spin_arr[i];
-        }
     }
 }
 

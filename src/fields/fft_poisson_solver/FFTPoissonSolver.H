@@ -40,6 +40,11 @@ public:
      */
     virtual void SolvePoissonEquation (amrex::MultiFab& lhs_mf) = 0;
 
+    virtual void SolvePoissonEquation2 (amrex::MultiFab& lhs_mf, amrex::Real acoeff) {
+        amrex::Abort("Wrong Solver");
+    };
+
+
     /** Position and relative factor used to apply inhomogeneous Dirichlet boundary conditions */
     virtual amrex::Real BoundaryOffset() = 0;
     virtual amrex::Real BoundaryFactor() = 0;

@@ -12,81 +12,40 @@
 void
 shiftSlippedParticles (BeamParticleContainer& beam, const int slice, amrex::Geometry const& geom)
 {
-    if (beam.getNumParticlesIncludingSlipped(WhichBeamSlice::This) == 0) {
-        // nothing to do
-        return;
-    }
-
     HIPACE_PROFILE("shiftSlippedParticles()");
 
-    const int num_particles = beam.getNumParticlesIncludingSlipped(WhichBeamSlice::This);
-    const auto ptdr = beam.getBeamSlice(WhichBeamSlice::This).getParticleTileData();
-    // min_z is the lower end of WhichBeamSlice::This
-    const amrex::Real min_z = geom.ProbLo(2) + (slice-geom.Domain().smallEnd(2))*geom.CellSize(2);
+    amrex::removeInvalidParticles(beam.getBeamSlice(WhichBeamSlice::This));
 
-    amrex::ReduceOps<amrex::ReduceOpSum, amrex::ReduceOpSum> reduce_op;
-    amrex::ReduceData<int, int> reduce_data(reduce_op);
-    using ReduceTuple = typename decltype(reduce_data)::Type;
+    const amrex::Real dz = geom.CellSize(2);
+    const amrex::Real dzi = geom.InvCellSize(2);
+    const amrex::Real zeta_min = geom.ProbLo(2) + dz * (slice - geom.Domain().smallEnd(2));
 
-    // count the number of invalid and slipped particles
-    reduce_op.eval(
-        num_particles, reduce_data,
-        [=] AMREX_GPU_DEVICE (const int i) -> ReduceTuple
-        {
-            if (!ptdr.id(i).is_valid()) {
-                return {0, 0};
-            } else if (ptdr.pos(2, i) >= min_z) {
-                return {1, 0};
-            } else {
-                return {1, 1};
-            }
-        });
+    const amrex::Real dt = Hipace::GetInstance().m_dt;
+    const amrex::Real t_max = Hipace::GetInstance().m_physical_time + dt;
 
-    const auto [num_valid, num_slipped] = reduce_data.value();
-    const int num_stay = num_valid - num_slipped;
+    const amrex::Real dt_dzi = dt * dzi;
+    const amrex::Real cutoff = t_max + zeta_min * dt_dzi;
 
-    if (num_valid != num_particles) {
-        // remove all invalid particles from WhichBeamSlice::This (including slipped)
-        amrex::partitionParticles(beam.getBeamSlice(WhichBeamSlice::This), num_valid,
-            [=] AMREX_GPU_DEVICE (auto& ptd, int i) {
-                return ptd.id(i).is_valid();
-            });
-
-        beam.getBeamSlice(WhichBeamSlice::This).resize(num_valid);
-    }
-
-    if (num_slipped == 0) {
-        // nothing to do
-        beam.resize(WhichBeamSlice::This, num_stay, 0);
-        return;
-    }
-
-    // put non slipped particles at the start of the slice
-    amrex::partitionParticles(beam.getBeamSlice(WhichBeamSlice::This), num_stay,
+    const auto num_stay = amrex::partitionParticles(beam.getBeamSlice(WhichBeamSlice::This),
         [=] AMREX_GPU_DEVICE (auto& ptd, int i) {
-            return ptd.pos(2, i) >= min_z;
+            const amrex::Real time = ptd.rdata(BeamIdx::t)[i];
+            const amrex::Real zeta = ptd.pos(2, i);
+            return time + zeta * dt_dzi < cutoff;
         });
 
-    const int next_size = beam.getNumParticles(WhichBeamSlice::Next);
+    const auto num_move = beam.getBeamSlice(WhichBeamSlice::This).numParticles() - num_stay;
 
-    // there shouldn't be any slipped particles already on WhichBeamSlice::Next
-    AMREX_ALWAYS_ASSERT(beam.getNumParticlesIncludingSlipped(WhichBeamSlice::Next) == next_size);
+    beam.getBeamSlice(WhichBeamSlice::Next_t).resize(num_move);
 
-    beam.resize(WhichBeamSlice::Next, next_size, num_slipped);
+    auto ptd_this = beam.getBeamSlice(WhichBeamSlice::This).getParticleTileData();
+    auto ptd_next_t = beam.getBeamSlice(WhichBeamSlice::Next_t).getParticleTileData();
 
-    const auto ptd_this = beam.getBeamSlice(WhichBeamSlice::This).getParticleTileData();
-    const auto ptd_next = beam.getBeamSlice(WhichBeamSlice::Next).getParticleTileData();
-
-    amrex::ParallelFor(num_slipped,
+    amrex::ParallelFor(num_move,
         [=] AMREX_GPU_DEVICE (int i)
         {
-            // copy particles from WhichBeamSlice::This to WhichBeamSlice::Next
-            amrex::copyParticle(ptd_next, ptd_this, num_stay + i, next_size + i);
+            amrex::copyParticle(ptd_next_t, ptd_this, num_stay + i, i);
         });
 
-
-    // stream sync before WhichBeamSlice::This is resized
     amrex::Gpu::streamSynchronize();
-
-    beam.resize(WhichBeamSlice::This, num_stay, 0);
+    beam.getBeamSlice(WhichBeamSlice::This).resize(num_stay);
 }
