@@ -628,7 +628,12 @@ Hipace::SolveOneSlice (int islice, int step, bool is_first_step, bool is_last_st
 
     m_multi_beam.DepositCurrentSlice(m_fields, m_3D_geom, 0, islice);
 
-    m_fields.SolveFields(m_3D_geom);
+    if (step == 0) {
+        m_fields.shift(0, WhichSlice::This, WhichSlice::Prev_t,
+            "ExmBy", "EypBx", "Ez", "Bz", "ExpBy", "EymBx");
+    } else {
+        m_fields.SolveFields(m_3D_geom);
+    }
 
     FillBeamDiagnostics(step, m_physical_time, is_last_step);
 
@@ -708,19 +713,20 @@ Hipace::SetInitialConditions (const int islice)
 
     for ( amrex::MFIter mfi(slicemf, DfltMfiTlng); mfi.isValid(); ++mfi ){
 
-        amrex::Box const& gbx = mfi.growntilebox();
-        amrex::Box const& bx = mfi.tilebox();
+        const amrex::BoxND<2> tbox = to2D(mfi.tilebox());
 
         Array3<amrex::Real> const arr = slicemf.array(mfi);
-        amrex::ParallelFor(to2D(gbx),
+        amrex::ParallelFor(tbox,
             [=] AMREX_GPU_DEVICE (int i, int j) noexcept
             {
                 const amrex::Real x = i * dx + poff_x;
+                const amrex::Real x_node = x - 0.5_rt * dx;
                 const amrex::Real y = j * dy + poff_y;
+                const amrex::Real y_node = y - 0.5_rt * dy;
                 const amrex::Real z = islice * dz + poff_z;
 
-                const amrex::Real ExpByp = external_fields[0](x, y, z, time);
-                const amrex::Real EymBxp = external_fields[1](x, y, z, time);
+                const amrex::Real ExpByp = external_fields[0](x_node, y, z, time);
+                const amrex::Real EymBxp = external_fields[1](x, y_node, z, time);
 
                 arr(i, j, ExmBy_prev_t) = 0.;
                 arr(i, j, EypBx_prev_t) = 0.;
@@ -729,20 +735,25 @@ Hipace::SetInitialConditions (const int islice)
                 arr(i, j, EymBx_prev_t) = EymBxp;
             });
 
-        amrex::ParallelFor(to2D(bx),
+        amrex::ParallelFor(tbox,
             [=] AMREX_GPU_DEVICE (int i, int j) noexcept
             {
+                int ip1 = std::min(i+1, tbox.bigEnd(0));
+                int im1 = std::max(i-1, tbox.smallEnd(0));
+                int jp1 = std::min(j+1, tbox.bigEnd(1));
+                int jm1 = std::max(j-1, tbox.smallEnd(1));
+
                 arr(i, j, Ez_prev_t) = arr(i, j, Ez_prev_z2) + dz * (
-                    dx_inv * (arr(i+1, j, ExpBy_prev_z) - arr(i-1, j, ExpBy_prev_z))
-                    + dy_inv * (arr(i, j+1, EymBx_prev_z) - arr(i, j-1, EymBx_prev_z))
+                    dx_inv * (arr(ip1, j, ExpBy_prev_z) - arr(i, j, ExpBy_prev_z))
+                    + dy_inv * (arr(i, jp1, EymBx_prev_z) - arr(i, j, EymBx_prev_z))
                 );
                 arr(i, j, Bz_prev_t) = arr(i, j, Bz_prev_z2) + dz * clight_inv * (
-                    dy_inv * (arr(i, j+1, ExpBy_prev_z) - arr(i, j-1, ExpBy_prev_z))
-                    - dx_inv * (arr(i+1, j, EymBx_prev_z) - arr(i-1, j, EymBx_prev_z))
+                    dy_inv * (arr(i, j, ExpBy_prev_z) - arr(i, jm1, ExpBy_prev_z))
+                    - dx_inv * (arr(i, j, EymBx_prev_z) - arr(im1, j, EymBx_prev_z))
                 );
             });
 
-        amrex::ParallelFor(to2D(gbx),
+        amrex::ParallelFor(tbox,
             [=] AMREX_GPU_DEVICE (int i, int j) noexcept
             {
                 arr(i, j, Ez_prev_z2) = arr(i, j, Ez_prev_z);

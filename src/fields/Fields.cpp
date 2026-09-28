@@ -62,11 +62,11 @@ Fields::AllocData (
         m_lev0_periodicity = geom.periodicity();
 
         // Need 1 extra guard cell transversally for transverse derivative
-        int nguards_xy = (Hipace::m_depos_order_xy + 1) / 2 + 1;
+        int nguards_xy = 1 + (Hipace::m_depos_order_xy + 1) / 2 + 1;
         // Check the temperature deposition order, if enabled
         if (Hipace::m_deposit_temp_individual &&
             Hipace::m_temperature_depos_order > Hipace::m_depos_order_xy) {
-            nguards_xy = (Hipace::m_temperature_depos_order + 1) / 2 + 1;
+            nguards_xy = 1 + (Hipace::m_temperature_depos_order + 1) / 2 + 1;
         }
         m_slices_nguards = amrex::IntVect{nguards_xy, nguards_xy, 0};
 
@@ -83,7 +83,7 @@ Fields::AllocData (
         Comps[isl].multi_emplace(N_Comps, "ExmBy", "EypBx", "Ez", "Bz", "ExpBy", "EymBx");
 
         isl = WhichSlice::Prev_z;
-        Comps[isl].multi_emplace(N_Comps, "ExmBy", "EypBx");
+        Comps[isl].multi_emplace(N_Comps, "ExmBy", "EypBx", "Ez", "Bz");
 
         isl = WhichSlice::Init;
         Comps[isl].multi_emplace(N_Comps, "Ez_prev_z", "Bz_prev_z", "Ez_prev_z2", "Bz_prev_z2",
@@ -489,7 +489,7 @@ Fields::ShiftSlices (int lev)
 {
     HIPACE_PROFILE("Fields::ShiftSlices()");
 
-    shift(lev, WhichSlice::Prev_z, WhichSlice::This, "ExmBy", "EypBx");
+    shift(lev, WhichSlice::Prev_z, WhichSlice::This, "ExmBy", "EypBx", "Ez", "Bz");
 }
 
 void
@@ -547,14 +547,24 @@ Fields::SolveFields (amrex::Vector<amrex::Geometry> const& geom)
 {
     HIPACE_PROFILE("SolveFields()");
 
+    // shift(0, WhichSlice::This, WhichSlice::Prev_t,
+    //     "ExmBy", "EypBx", "Ez", "Bz", "ExpBy", "EymBx");
+
+    // return;
+
+    setVal(0, 0, WhichSlice::This, "ExmBy", "EypBx", "Ez", "Bz", "ExpBy", "EymBx");
+
     using namespace amrex::literals;
 
-    const int ExmBy_this = Comps[WhichSlice::This]["ExmBy"];
-    const int EypBx_this = Comps[WhichSlice::This]["EypBx"];
-    const int Ez_this = Comps[WhichSlice::This]["Ez"];
-    const int Bz_this = Comps[WhichSlice::This]["Bz"];
-    const int ExpBy_this = Comps[WhichSlice::This]["ExpBy"];
-    const int EymBx_this = Comps[WhichSlice::This]["EymBx"];
+    const int ExmBy_this = Comps[WhichSlice::This]["ExmBy"]; // node cell
+    const int EypBx_this = Comps[WhichSlice::This]["EypBx"]; // cell node
+    const int Ez_this = Comps[WhichSlice::This]["Ez"];       // cell cell
+    const int Bz_this = Comps[WhichSlice::This]["Bz"];       // node node
+    const int ExpBy_this = Comps[WhichSlice::This]["ExpBy"]; // node cell
+    const int EymBx_this = Comps[WhichSlice::This]["EymBx"]; // cell node
+
+    // cell(i) = node(i+1) - node(i)
+    // node(i) = cell(i) - cell(i-1)
 
     const int jx_this = Comps[WhichSlice::This]["jx"];
     const int jy_this = Comps[WhichSlice::This]["jy"];
@@ -569,6 +579,8 @@ Fields::SolveFields (amrex::Vector<amrex::Geometry> const& geom)
 
     const int ExmBy_prev_z = Comps[WhichSlice::Prev_z]["ExmBy"];
     const int EypBx_prev_z = Comps[WhichSlice::Prev_z]["EypBx"];
+    const int Ez_prev_z = Comps[WhichSlice::Prev_z]["Ez"];
+    const int Bz_prev_z = Comps[WhichSlice::Prev_z]["Bz"];
 
     const auto pc = get_phys_const();
     const amrex::Real clight = pc.c;
@@ -583,17 +595,21 @@ Fields::SolveFields (amrex::Vector<amrex::Geometry> const& geom)
 
         const Array3<amrex::Real> slice_array = m_slices[0].array(mfi);
         const Array2<amrex::Real> staging_array = m_poisson_solver[0]->StagingArea().array(mfi);
+        const amrex::BoxND<2> tbox = to2D(mfi.tilebox());
 
-        amrex::ParallelFor(to2D(mfi.growntilebox()),
+        amrex::ParallelFor(tbox,
             [=] AMREX_GPU_DEVICE(int i, int j) noexcept
             {
+                int im1 = std::max(i-1, tbox.smallEnd(0));
+                int jp1 = std::min(j+1, tbox.bigEnd(1));
+
                 staging_array(i,j) = (
                     dtau_c_inv * dtau_c_inv * slice_array(i,j,ExmBy_prev_t)
                     - dtau_c_inv * clight * mu0 * slice_array(i,j,jx_this)
-                    + dtau_c_inv * clight * 0.5_rt * dy_inv * (slice_array(i,j+1,Bz_prev_t) - slice_array(i,j-1,Bz_prev_t))
+                    + dtau_c_inv * clight * dy_inv * (slice_array(i,jp1,Bz_prev_t) - slice_array(i,j,Bz_prev_t))
                     + dtau_c_inv * dzeta_inv * 2._rt * slice_array(i,j,ExmBy_prev_z)
-                    - dtau_c_inv * 0.5_rt * dx_inv * (slice_array(i+1,j,Ez_prev_t) - slice_array(i-1,j,Ez_prev_t))
-                    - mu0 * clight * clight * 0.5_rt * dx_inv * (slice_array(i+1,j,rhomjz_this) - slice_array(i-1,j,rhomjz_this))
+                    - dtau_c_inv * dx_inv * (slice_array(i,j,Ez_prev_t) - slice_array(im1,j,Ez_prev_t))
+                    - mu0 * clight * clight * dx_inv * (slice_array(i,j,rhomjz_this) - slice_array(im1,j,rhomjz_this))
                 );
             });
     }
@@ -605,17 +621,21 @@ Fields::SolveFields (amrex::Vector<amrex::Geometry> const& geom)
 
         const Array3<amrex::Real> slice_array = m_slices[0].array(mfi);
         const Array2<amrex::Real> staging_array = m_poisson_solver[0]->StagingArea().array(mfi);
+        const amrex::BoxND<2> tbox = to2D(mfi.tilebox());
 
-        amrex::ParallelFor(to2D(mfi.growntilebox()),
+        amrex::ParallelFor(tbox,
             [=] AMREX_GPU_DEVICE(int i, int j) noexcept
             {
+                int ip1 = std::min(i+1, tbox.bigEnd(0));
+                int jm1 = std::max(j-1, tbox.smallEnd(1));
+
                 staging_array(i,j) = (
                     dtau_c_inv * dtau_c_inv * slice_array(i,j,EypBx_prev_t)
                     - dtau_c_inv * clight * mu0 * slice_array(i,j,jy_this)
-                    - dtau_c_inv * clight * 0.5_rt * dx_inv * (slice_array(i+1,j,Bz_prev_t) - slice_array(i-1,j,Bz_prev_t))
+                    - dtau_c_inv * clight * dx_inv * (slice_array(ip1,j,Bz_prev_t) - slice_array(i,j,Bz_prev_t))
                     + dtau_c_inv * dzeta_inv * 2._rt * slice_array(i,j,EypBx_prev_z)
-                    - dtau_c_inv * 0.5_rt * dy_inv * (slice_array(i,j+1,Ez_prev_t) - slice_array(i,j+1,Ez_prev_t))
-                    - mu0 * clight * clight * 0.5_rt * dy_inv * (slice_array(i,j+1,rhomjz_this) - slice_array(i,j+1,rhomjz_this))
+                    - dtau_c_inv * dy_inv * (slice_array(i,j,Ez_prev_t) - slice_array(i,jm1,Ez_prev_t))
+                    - mu0 * clight * clight * dy_inv * (slice_array(i,j,rhomjz_this) - slice_array(i,jm1,rhomjz_this))
                 );
             });
     }
@@ -626,39 +646,69 @@ Fields::SolveFields (amrex::Vector<amrex::Geometry> const& geom)
     for ( amrex::MFIter mfi(m_slices[0], DfltMfiTlng); mfi.isValid(); ++mfi ){
 
         const Array3<amrex::Real> slice_array = m_slices[0].array(mfi);
+        const amrex::BoxND<2> tbox = to2D(mfi.tilebox());
 
-        amrex::ParallelFor(to2D(mfi.growntilebox()),
+        amrex::ParallelFor(tbox,
             [=] AMREX_GPU_DEVICE(int i, int j) noexcept
             {
+                int ip1 = std::min(i+1, tbox.bigEnd(0));
+                int im1 = std::max(i-1, tbox.smallEnd(0));
+                int jp1 = std::min(j+1, tbox.bigEnd(1));
+                int jm1 = std::max(j-1, tbox.smallEnd(1));
+
                 slice_array(i,j,Ez_this) = (
                     slice_array(i,j,Ez_prev_t)
                     + dtau * clight * mu0 * clight * clight * slice_array(i,j,rhomjz_this)
-                    - dtau * clight * 0.5_rt * dx_inv * (slice_array(i+1,j,ExmBy_this) - slice_array(i-1,j,ExmBy_this))
-                    - dtau * clight * 0.5_rt * dy_inv * (slice_array(i,j+1,EypBx_this) - slice_array(i,j-1,EypBx_this))
+                    - dtau * clight * dx_inv * (slice_array(ip1,j,ExmBy_this) - slice_array(i,j,ExmBy_this))
+                    - dtau * clight * dy_inv * (slice_array(i,jp1,EypBx_this) - slice_array(i,j,EypBx_this))
                 );
                 slice_array(i,j,Bz_this) = (
                     slice_array(i,j,Bz_prev_t)
-                    + dtau * 0.5_rt * dy_inv * (slice_array(i,j+1,ExmBy_this) - slice_array(i,j-1,ExmBy_this))
-                    - dtau * 0.5_rt * dx_inv * (slice_array(i+1,j,EypBx_this) - slice_array(i-1,j,EypBx_this))
+                    + dtau * dy_inv * (slice_array(i,j,ExmBy_this) - slice_array(i,jm1,ExmBy_this))
+                    - dtau * dx_inv * (slice_array(i,j,EypBx_this) - slice_array(im1,j,EypBx_this))
                 );
             });
 
-        amrex::ParallelFor(to2D(mfi.growntilebox()),
+        amrex::ParallelFor(tbox,
             [=] AMREX_GPU_DEVICE(int i, int j) noexcept
             {
+                int ip1 = std::min(i+1, tbox.bigEnd(0));
+                int im1 = std::max(i-1, tbox.smallEnd(0));
+                int jp1 = std::min(j+1, tbox.bigEnd(1));
+                int jm1 = std::max(j-1, tbox.smallEnd(1));
+
                 slice_array(i,j,ExpBy_this) = (
                     slice_array(i,j,ExpBy_prev_t)
                     - dtau * clight * mu0 * clight * slice_array(i,j,jx_this)
-                    + dtau * clight * clight * 0.5_rt * dy_inv * (slice_array(i,j+1,Bz_this) - slice_array(i,j-1,Bz_this))
-                    + dtau * clight * 0.5_rt * dx_inv * (slice_array(i+1,j,Ez_this) - slice_array(i-1,j,Ez_this))
+                    + dtau * clight * clight * dy_inv * (slice_array(i,jp1,Bz_this) - slice_array(i,j,Bz_this))
+                    + dtau * clight * dx_inv * (slice_array(i,j,Ez_this) - slice_array(im1,j,Ez_this))
                 );
                 slice_array(i,j,EymBx_this) = (
                     slice_array(i,j,EymBx_prev_t)
                     - dtau * clight * mu0 * clight * slice_array(i,j,jy_this)
-                    - dtau * clight * clight * 0.5_rt * dx_inv * (slice_array(i+1,j,Bz_this) - slice_array(i-1,j,Bz_this))
-                    + dtau * clight * 0.5_rt * dy_inv * (slice_array(i,j+1,Ez_this) - slice_array(i,j-1,Ez_this))
+                    - dtau * clight * clight * dx_inv * (slice_array(ip1,j,Bz_this) - slice_array(i,j,Bz_this))
+                    + dtau * clight * dy_inv * (slice_array(i,j,Ez_this) - slice_array(i,jm1,Ez_this))
                 );
             });
+
+        // amrex::ParallelFor(to2D(mfi.growntilebox(box_grow)),
+        //     [=] AMREX_GPU_DEVICE(int i, int j) noexcept
+        //     {
+        //         slice_array(i,j,Ez_this) = slice_array(i,j,Ez_this) + clight * dtau * (
+        //             dzeta_inv * (slice_array(i,j,Ez_prev_z) - slice_array(i,j,Ez_this))
+        //             + dx_inv * 0.5_rt * (slice_array(i+1,j,ExmBy_this) - slice_array(i,j,ExmBy_this))
+        //             + dx_inv * 0.5_rt * (slice_array(i+1,j,ExpBy_this) - slice_array(i,j,ExpBy_this))
+        //             + dy_inv * 0.5_rt * (slice_array(i,j+1,EypBx_this) - slice_array(i,j,EypBx_this))
+        //             + dy_inv * 0.5_rt * (slice_array(i,j+1,EymBx_this) - slice_array(i,j,EymBx_this))
+        //         );
+        //         slice_array(i,j,Bz_this) = slice_array(i,j,Bz_this) + dtau * (
+        //             clight * dzeta_inv * (slice_array(i,j,Bz_prev_z) - slice_array(i,j,Bz_this))
+        //             - dx_inv * 0.5_rt * (slice_array(i,j,ExmBy_this) - slice_array(i-1,j,ExmBy_this))
+        //             + dx_inv * 0.5_rt * (slice_array(i,j,ExpBy_this) - slice_array(i-1,j,ExpBy_this))
+        //             + dy_inv * 0.5_rt * (slice_array(i,j,EypBx_this) - slice_array(i,j-1,EypBx_this))
+        //             - dy_inv * 0.5_rt * (slice_array(i,j,EymBx_this) - slice_array(i,j-1,EymBx_this))
+        //         );
+        //     });
     }
 }
 
