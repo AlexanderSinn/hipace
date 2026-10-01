@@ -132,6 +132,10 @@ BeamParticleContainer::ReadParameters ()
         {Hipace::m_depos_order_xy % 2, Hipace::m_depos_order_xy % 2};
     queryWithParserAlt(pp, "reorder_idx_type", idx_array, pp_alt);
     bool output_ratio_specified  = queryWithParserAlt(pp, "output_ratio", m_output_ratio, pp_alt);
+    if (output_ratio_specified) {
+        amrex::Print() << "WARNING: '<beam name> or beams.output_ratio' is deprecated! "
+                "Use '<diag name> or beam_diag.output_ratio' instead!\n";
+    }
     AMREX_ALWAYS_ASSERT_WITH_MESSAGE(m_output_ratio >= 1, "output_ratio must be >= 1");
     bool output_ids_specified = queryWithParserAlt(pp, "output_ids", m_output_ids, pp_alt);
     AMREX_ALWAYS_ASSERT_WITH_MESSAGE(output_ratio_specified + output_ids_specified < 2,
@@ -445,7 +449,7 @@ BeamParticleContainer::InitData (const amrex::Geometry& geom)
     if (m_insitu_period.isNonZero()) {
 #ifdef HIPACE_USE_OPENPMD
         AMREX_ALWAYS_ASSERT_WITH_MESSAGE(m_insitu_file_prefix !=
-            Hipace::GetInstance().m_openpmd_writer.m_file_prefix,
+            Hipace::GetInstance().getDiagFilePrefix(),
             "Must choose a different beam insitu file prefix compared to the full diagnostics");
 #endif
         // Allocate memory for in-situ diagnostics
