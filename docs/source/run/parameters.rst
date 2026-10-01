@@ -612,17 +612,20 @@ which are valid only for certain beam types, are introduced further below under
 
 
 * ``<beam name>.injection_type`` (`string`)
-    The injection type for the particle beam. Currently available are ``fixed_weight_pdf``, ``fixed_weight``, ``fixed_ppc``,
+    The injection type for the particle beam. Currently available are ``fixed_weight_pdf``, ``fixed_weight_twiss``, ``fixed_weight``, ``fixed_ppc``,
     ``from_file`` and ``from_list``.
-    ``fixed_weight_pdf`` generates a beam with a fixed number of particles with a constant weight where
-    the transverse profile is Gaussian and the longitudinal profile is arbitrary according to a
-    user-specified probability density function. It is more general and faster, and uses
-    less memory than ``fixed_weight``.
-    ``fixed_weight`` generates a Gaussian beam with a fixed number of particles with a constant weight.
-    ``fixed_ppc`` generates a beam with a fixed number of particles per cell and
-    varying weights. It can be either a Gaussian or a flattop beam.
-    ``from_file`` reads a beam from openPMD files.
-    ``from_list`` reads a beam from arrays provided directly in the input script.
+
+        * ``fixed_weight_pdf`` generates a beam with a fixed number of particles with a constant weight where
+          the transverse profile is Gaussian and the longitudinal profile is arbitrary according to a
+          user-specified probability density function. It is more general and faster, and uses
+          less memory than ``fixed_weight``.
+        * ``fixed_weight_twiss`` similar to ``fixed_weight_pdf`` but takes Courant-Snyder
+          parameters as input for transverse beam properties
+        * ``fixed_weight`` generates a Gaussian beam with a fixed number of particles with a constant weight.
+        * ``fixed_ppc`` generates a beam with a fixed number of particles per cell and
+          varying weights. It can be either a Gaussian or a flattop beam.
+        * ``from_file`` reads a beam from openPMD files.
+        * ``from_list`` reads a beam from arrays provided directly in the input script.
 
 * ``<beam name>.element`` (`string`) optional (default `electron`)
     The Physical Element of the plasma. Sets charge, mass and, if available,
@@ -692,9 +695,10 @@ Option: ``fixed_weight_pdf``
     the code to generate the absolute beam profile.
     Examples (assuming ``z_center``, ``z_std``, ``z_length``, ``z_slope``, ``z_min`` and ``z_max``
     are defined with ``my_constants``):
-    - Gaussian: ``exp(-0.5*((z-z_center)/z_std)^2)``
-    - Cosine: ``(cos(2*pi*(z-z_center)/z_length)+1)*(2*abs(z-z_center)<z_length)``
-    - Trapezoidal: ``(z<z_max)*(z>z_min)*(1+z_slope*z)``
+      * Gaussian: ``exp(-0.5*((z-z_center)/z_std)^2)``
+      * Cosine: ``(cos(2*pi*(z-z_center)/z_length)+1)*(2*abs(z-z_center)<z_length)``
+      * Flattop: ``(z<z_max)*(z>z_min)``
+      * Trapezoidal: ``(z<z_max)*(z>z_min)*(1+z_slope*z)``
 
 * ``<beam name>.total_charge`` (`float`)
     Total charge of the beam (either ``total_charge`` or ``density`` must be specified).
@@ -748,6 +752,63 @@ Option: ``fixed_weight_pdf``
 
 * ``<beam name>.pdf_ref_ratio`` (`int`) optional (default `4`)
     Into how many segments the pdf is divided per zeta slice for its first-order numerical evaluation.
+
+Option: ``fixed_weight_twiss``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+* ``<beam name>.num_particles`` (`int`)
+    Number of constant weight particles to generate the beam.
+
+* ``<beam name>.pdf`` (`float`)
+    See entry ``<beam name>.pdf`` of section ``fixed_weight_pdf`` above.
+
+* ``<beam name>.total_charge`` (`float`)
+    See entry ``<beam name>.total_charge`` of section ``fixed_weight_pdf`` above.
+
+* ``<beam name>.density`` (`float`)
+    See entry ``<beam name>.density`` of section ``fixed_weight_pdf`` above.
+
+* ``<beam name>.energy_mean_MeV`` (`float`)
+    The mean energy of the beam in MeV, including the rest mass of the beam particles.
+    Can be a function of z.
+    The normalized momentum is calculated as :math:`u_z = \sqrt{\gamma^2 - 1}`
+    with :math:`\mu_{\gamma} = \mu_{E} \frac{q_e}{m c^2}` and
+    :math:`\sigma_{\gamma} = \sigma_{E} \frac{q_e}{m c^2}`.
+
+* ``<beam name>.energy_spread_MeV`` (`float`)
+    The energy spread of the beam in MeV. Can be a function of z.
+
+* ``<beam name>.position_mean`` (2 `float`) optional (default `0 0`)
+    The mean position of the beam in ``x, y``, separated by a space. Both values can be a function of z.
+
+* ``<beam name>.twiss_alpha`` (2 `float`) optional (default `0 0`)
+    The Courant-Snyder parameter describing position-momentum correlations in rad in ``x, y``,
+    separated by a space. Both values can be a function of z.
+    Internally, :math:`x'` is changed depending on the position as
+    :math:`x' = x' - x \cdot \mathrm{twiss\_alpha_x} / \mathrm{twiss\_beta_x}`.
+
+* ``<beam name>.twiss_beta`` (2 `float`)
+    The Courant-Snyder parameter describing beam size in meters in ``x, y``,
+    separated by a space. Both values can be a function of z.
+    Internally, the standard deviation of :math:`x` and :math:`x'` are calculated as
+    :math:`\sigma_x = \sqrt{\mathrm{geo\_emittance_x} \cdot \mathrm{twiss\_beta_x}}` and
+    :math:`\sigma_{x'} = \sqrt{\mathrm{geo\_emittance_x} / \mathrm{twiss\_beta_x}}` with
+    :math:`u_x = x' \cdot u_z` in case ``twiss_alpha`` is zero.
+
+* ``<beam name>.emittance`` (2 `float`)
+    The emittance normalized to the longitudinal momentum in m rad in ``x, y``,
+    separated by a space. Both values can be a function of z.
+    Internally, the geometric emittance is calculated as
+    :math:`\mathrm{geo\_emittance_x} = \mathrm{emittance_x} / u_z`.
+
+* ``<beam name>.do_symmetrize`` (`bool`) optional (default `0`)
+    See entry ``<beam name>.do_symmetrize`` of section ``fixed_weight_pdf`` above.
+
+* ``<beam name>.radius`` (`float`) optional (default `infinity`)
+    See entry ``<beam name>.radius`` of section ``fixed_weight_pdf`` above.
+
+* ``<beam name>.pdf_ref_ratio`` (`int`) optional (default `4`)
+    See entry ``<beam name>.pdf_ref_ratio`` of section ``fixed_weight_pdf`` above.
 
 Option: ``fixed_weight``
 ^^^^^^^^^^^^^^^^^^^^^^^^
